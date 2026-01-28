@@ -23,13 +23,24 @@ pub fn bufreader_from_path(input_file_path: &String) -> io::Result<io::Lines<io:
 }
 
 pub fn strip_whitespace_and_comments(line: String) -> String {
-    line
-    .split_whitespace() // Split whitespace and put back together
-    .collect::<String>()
-
-    .splitn(2, "//") // Split once at first comment delimiter and unwrap on first slice
-    .next()
-    .unwrap() // (guaranteed)
-
-    .to_string() // Return as string
+    strip_whitespace(
+        strip_comments(
+            line
+        )
+    )
 }
+
+pub fn strip_whitespace(line: String) -> String {
+    line
+    .split_whitespace()
+    .collect::<String>()
+}
+
+pub fn strip_comments(line: String) -> String {
+    line
+    .splitn(2, "//")
+    .next()
+    .unwrap()
+    .to_string()
+}
+

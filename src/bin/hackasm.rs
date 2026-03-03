@@ -105,7 +105,7 @@ mod hack_assembler {
         use super::SymbolTable;
 
         pub fn a_instruction(instruction: &str, symbol_table: &mut SymbolTable) -> String {
-            let instruction_as_integer  = match instruction.parse::<u16>() {
+            let instruction_as_integer = match instruction.parse::<u16>() {
                 Ok(value) => value, 
                 Err(error) => match error.kind() {
                     std::num::IntErrorKind::PosOverflow => panic!("Invalid a-instruction due to 16-bit integer overflow"),
@@ -217,6 +217,7 @@ mod hack_assembler {
     }
 
     impl SymbolTable {
+        #[allow(dead_code)]
         pub fn new() -> SymbolTable {
             let new_hashmap: HashMap<String, u16> = HashMap::new();
 
@@ -293,7 +294,8 @@ mod hack_assembler {
 
             if is_occupied {
                 self.inner.get(key).unwrap()
-            } else {
+            } 
+            else {
                 let addr = self.allocate_address();
                 self.inner.insert(key.to_string(), addr);
                 self.get(key).unwrap()

@@ -49,7 +49,7 @@ A=M
 M=D
 
 
-// push pointer 0/1-THIS/THAT: push whatever value is in this/that to stack
+// push/pop pointer 0/1-THIS/THAT: push whatever value is in this/that to stack
 @THISTHAT
 D=M
 //...

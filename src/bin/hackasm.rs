@@ -19,8 +19,7 @@ fn main() {
     for (line_number, line_result) in file_lines.enumerate() {
 
         let line: String = parser::strip_whitespace_and_comments(
-            line_result
-            .unwrap()
+            line_result.unwrap()
         );
         
         // If L-instruction
@@ -48,7 +47,6 @@ fn main() {
             processed_lines.push_str(&line);
             processed_lines.push_str("\n");
         }
-
     }
 
     // SECOND PASS

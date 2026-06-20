@@ -3,6 +3,22 @@ use std::str::FromStr;
 use jackrust::parser;
 use code::Operation;
 
+
+// Big thoughts time: 
+// Entrypoint: read file
+// Loop over lines:
+// Each line: 
+// (preproc)
+// Parse line and count line number
+// Split first part and parse as Operation
+// Split second, parse from string to Register (enum)
+// Third: parse as integer u16
+// Translate operation to binary and add to buffer
+
+// if arithmetic op but the rest is not empty, syntax error
+// match against different arithmetic operations and emit assembly
+// 
+
 fn main() {
     let input_file_path = parser::get_path_from_env();
     let file_lines = parser::bufreader_from_path(&input_file_path)
@@ -27,12 +43,7 @@ fn main() {
     // Run code gen    
     let mut final_lines: String = String::new();
 
-    for line in processed_lines.lines() {
-        let op: Operation = Operation::from_str(line)
-            .unwrap();
-        
-        
-    }
+    for line in processed_lines.lines() {}
 }
 
 

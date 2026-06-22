@@ -2,7 +2,6 @@
 use std::fs;
 use std::env;
 use std::io::{self, BufRead};
-
 pub fn get_file_content_from_env() -> String {
     let input_file_path = get_path_from_env();
 
@@ -15,6 +14,28 @@ pub fn get_file_content_from_env() -> String {
 pub fn get_path_from_env() -> String {
     let env_args: Vec<String> = env::args().collect();
     env_args[1].clone()
+}
+
+pub fn get_filename_from_env() -> String {
+    get_path_from_env()
+    .split(std::path::MAIN_SEPARATOR)
+    .last()
+    .unwrap()
+    .to_string()
+}
+
+pub fn get_output_path_from_env(
+        file_extension_old: &str,
+        file_extension_new: &str,
+    ) -> String {
+
+    let mut file_name = get_path_from_env()
+    .strip_suffix(file_extension_old)
+    .unwrap()
+    .to_string();
+
+    file_name.push_str(file_extension_new);
+    file_name
 }
 
 pub fn bufreader_from_path(input_file_path: &String) -> io::Result<io::Lines<io::BufReader<fs::File>>> {

@@ -1,9 +1,5 @@
-use std::str::FromStr;
-
 use jackrust::parser;
-use code::Operation;
-
-use crate::code::ArithmeticOp;
+use code::*;
 
 
 // Big thoughts time: 
@@ -50,7 +46,7 @@ fn main() {
                 arithmetic_operation.emit_asm(&mut output_code),
 
             Operation::StackOperation(stack_operation) => {
-                let segment = segment_string.parse();
+                let segment: Result<Segment, InvalidKeywordError> = segment_string.parse();
                 let index = index_string.parse::<u16>().unwrap();
                 stack_operation.emit_asm(&mut output_code)
             }
@@ -186,7 +182,7 @@ mod code {
             }
         }
 
-        pub fn emit_asm(&self, target: &mut String) -> Result<(), std::fmt::Error> {
+        pub fn emit_asm(&self, target: &mut String) {
             use std::fmt::Write;
             let label = "PLACEHOLDER";
 
@@ -234,7 +230,7 @@ mod code {
                     self.build_operation_asm(),
                     label
                 )
-            }
+            };
         }
 
         fn build_operation_asm(&self) -> &str {
@@ -283,13 +279,11 @@ mod code {
             }
         }
 
-        pub fn emit_asm(&self, target: &mut String) 
-            -> Result<(), std::fmt::Error> {
+        pub fn emit_asm(&self, target: &mut String) {
             match self {
-                StackOp::Push => (),
-                StackOp::Pop => ()
-            }
-
+                StackOp::Push(op) => (),
+                StackOp::Pop(op) => ()
+            };
         }
     }
 }

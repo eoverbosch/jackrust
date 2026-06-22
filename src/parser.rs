@@ -23,11 +23,7 @@ pub fn bufreader_from_path(input_file_path: &String) -> io::Result<io::Lines<io:
 }
 
 pub fn strip_whitespace_and_comments(line: String) -> String {
-    strip_whitespace(
-        strip_comments(
-            line
-        )
-    )
+    strip_whitespace(strip_comments(line))
 }
 
 pub fn strip_whitespace(line: String) -> String {

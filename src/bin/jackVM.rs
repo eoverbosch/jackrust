@@ -143,13 +143,15 @@ mod code {
     #[derive(Debug)]
     pub struct InvalidKeywordError;
 
-    pub trait VMOperation: Sized {
-        fn parse(txt: &str) -> Result<Self, InvalidKeywordError>;
+    pub enum VMOperation {
+        Arithmetic(ArithmeticOp),
+        Compare(CompareOp),
+        StackOperation(StackOp)
     }
 
-    pub struct Arithmetic(pub ArithmeticOp);
+    pub struct Arithmetic(ArithmeticOp);
 
-    impl VMOperation for Arithmetic {
+    impl Arithmetic {
         fn parse(operation_string: &str) 
             -> Result<Arithmetic, InvalidKeywordError> {
             use ArithmeticOp::*;
@@ -219,9 +221,9 @@ mod code {
         }
     }
     
-    pub struct Compare(pub CompareOp);
+    pub struct Compare(CompareOp);
     
-    impl VMOperation for Compare {
+    impl Compare {
         fn parse(operation_string: &str) -> Result<Compare, InvalidKeywordError> {
             use CompareOp::*;
             
@@ -278,7 +280,7 @@ mod code {
 
     pub struct StackOperation(StackOp);
     
-    impl VMOperation for StackOperation {
+    impl StackOperation {
         fn parse(operation_string: &str) 
         -> Result<Self, InvalidKeywordError> {
             use StackOp::*;

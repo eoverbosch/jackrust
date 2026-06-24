@@ -12,8 +12,8 @@ M=D
 
 //MAP: local-LCL/argument-ARG/this-THIS/that-THAT/temp-5/static-xxx.i
 
-//push (example i=2) local/argument/this/that/temp
-// get LCL + i address 
+//push (example: push local 2) local/argument/this/that/temp
+// get *LCL + i address 
 @2
 D=A
 @LCL
@@ -27,25 +27,44 @@ A=M-1
 // Set stack value 
 M=D
 
+// for temp and static: You don't dereference the address. The address is either 5+i or filename.i
+@{5+i}
+D=M
+@SP
+M=M+1
+A=M-1
+M=D
 
-//pop (example i=2) local/argument/this/that/temp
-// Get LCL + i address
-@2
+//pop (example: pop local 2) local/argument/this/that/temp
+// Step 1: Get LCL + i address
+@2 // i
 D=A
-@LCL
+@LCL // segment
 D=D+M
-// Store in R13
+// Step 2: Store in R13
 @R13
 M=D
-// Load and decrement stack pointer
+// Step 3: Load and decrement stack pointer
 @SP
 AM=M-1
-// Get memory value
+// Step 4: Get memory value
 D=M
-// Load LCL+i
+// Step 5: Load LCL+i
 @R13
 A=M
-// Set memory value
+// Step 6: Set memory value
+M=D
+
+// for temp and static: You don't dereference the address. The address is either 5+i or filename.i
+@{5+i}
+D=A
+@R13
+M=D
+@SP
+AM=M-1
+D=M
+@R13
+A=M
 M=D
 
 

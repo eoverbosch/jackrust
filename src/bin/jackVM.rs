@@ -2,16 +2,6 @@ use jackrust::parser;
 use code::*;
 use std::fs;
 
-// Big thoughts time: 
-// Parse line and count line number
-// Split first part and parse as Operation
-// Split second, parse from string to Register (enum)
-// Third: parse as integer u16
-// Translate operation to binary and add to buffer
-
-// if arithmetic op but the rest is not empty, syntax error
-// match against different arithmetic operations and emit assembly
-// 
 
 fn main() {
     let input_file_path = parser::get_path_from_env();
@@ -23,7 +13,7 @@ fn main() {
     let code_lines = file_line_buffer
         .map(Result::unwrap) 
         .map(parser::strip_comments)
-        .filter(String::is_empty);
+        .filter(|line| !line.is_empty());
 
     // Parse code and push into output
     let mut output_code = String::new();
@@ -45,27 +35,35 @@ fn main() {
             ));
 
         match operation {
-            code::Arithmetic(arithmetic_operation) => {
+            VMOperation::Arithmetic(arithmetic_operation) => {
 
                 if !segment_string.is_empty() || !index_string.is_empty() {
-                    panic!("Syntax error on line {}", line_number)
+                    panic!(
+                        "Syntax error on line {}: arithmetic operation takes no arguments", 
+                        line_number
+                    )
                 }
 
                 arithmetic_operation.emit_asm(&mut output_code)
+
             },
 
-            code::Compare(compare_operation) => {
+            VMOperation::Compare(compare_operation) => {
                 compare_operation.emit_asm(
+
                     &mut output_code,
-                    generate_label(filename, label_counter.get())
+                    code::generate_comp_label(&filename, label_counter.get())
                 )
             },
 
-            code::StackOperation(stack_operation) => {
-                let segment: Result<Segment, InvalidKeywordError> = segment_string.parse();
+            VMOperation::StackOperation(stack_operation) => {
+                let segment: Segment 
+                    = Segment::parse(segment_string).unwrap();
+
                 let index = index_string.parse::<u16>().unwrap();
 
-                stack_operation.emit_asm(&mut output_code)
+                stack_operation.emit_asm(&mut output_code, segment, index, &filename)
+
             }
         }
     }
@@ -87,8 +85,9 @@ fn main() {
 
 
 mod code {
-    fn generate_label(filename: String, id: u16) -> String {
-        filename + ".comp." + &id.to_string()
+
+    pub fn generate_comp_label(filename: &String, id: u16) -> String {
+        filename.to_owned() + ".vmcomp." + &id.to_string()
     }
 
     pub struct LabelCounter(u16);
@@ -106,7 +105,8 @@ mod code {
 
     #[derive(Debug)]
     pub struct InvalidSegmentError;
-
+    #[derive(Debug)]
+    pub struct NoAvailableMemlabelError;
     pub enum Segment {
         Constant,
         Local,
@@ -138,6 +138,28 @@ mod code {
 
             Ok(segment)
         }
+
+        pub fn get_memlabel(&self, static_label: &String, index: &u16) -> Result<String, NoAvailableMemlabelError> {
+            use Segment::*;
+
+
+
+            let memlabel = match self {
+                Local => "LCL".to_owned(),
+                Argument => "ARG".to_owned(),
+                This => "THIS".to_owned(),
+                That => "THAT".to_owned(),
+                Static => static_label.to_owned() + "." + &index.to_string(),
+                Temp => {
+                    if index > &8 {panic!("Temp index is outside segment bounds")}
+                    (5 + index).to_string().to_owned()
+                }, 
+
+                _ => return Err(NoAvailableMemlabelError)
+            };
+
+            Ok(memlabel)
+        }
     }
     
     #[derive(Debug)]
@@ -149,28 +171,35 @@ mod code {
         StackOperation(StackOp)
     }
 
-    pub struct Arithmetic(ArithmeticOp);
-
-    impl Arithmetic {
-        fn parse(operation_string: &str) 
-            -> Result<Arithmetic, InvalidKeywordError> {
+    impl VMOperation {
+        pub fn parse(operation_string: &str)
+        -> Result<VMOperation, InvalidKeywordError> {
+            
             use ArithmeticOp::*;
-
+            use CompareOp::*;
+            use StackOp::*;
             let operation = match operation_string {
-                "add" => Arithmetic(Add),
-                "sub" => Arithmetic(Subtract),
-                "neg" => Arithmetic(Negate),
-                "and" => Arithmetic(And),
-                "or"  => Arithmetic(Or),
-                "not" => Arithmetic(Not),
+                "add"  => VMOperation::Arithmetic(Add),
+                "sub"  => VMOperation::Arithmetic(Subtract),
+                "neg"  => VMOperation::Arithmetic(Negate),
+                "and"  => VMOperation::Arithmetic(And),
+                "or"   => VMOperation::Arithmetic(Or),
+                "not"  => VMOperation::Arithmetic(Not),
+
+                "eq"   => VMOperation::Compare(Equate),
+                "gt"   => VMOperation::Compare(GreaterThan),
+                "lt"   => VMOperation::Compare(LessThan),
+
+                "push" => VMOperation::StackOperation(Push),
+                "pop"  => VMOperation::StackOperation(Pop),
 
                 _ => return Err(InvalidKeywordError)
             };
 
             Ok(operation)
-        }   
-
+        }
     }
+
     pub enum ArithmeticOp {
         Add,
         Subtract,
@@ -182,33 +211,32 @@ mod code {
 
     impl ArithmeticOp {
         pub fn emit_asm(&self, target: &mut String) {
+
             use std::fmt::Write;
 
-            match self {
+            let _ = match self {
                 // 2-parameter operations
                 ArithmeticOp::Add | ArithmeticOp::Subtract 
                 | ArithmeticOp::And | ArithmeticOp::Or 
-                => writeln!(target, 
-                    "@SP\n
-                    AM=M-1\n
-                    D=M\n
-                    A=A-1\n
+                => writeln!(target, "@SP\n\
+                    AM=M-1\n\
+                    D=M\n\
+                    A=A-1\n\
                     {}",
-                    self.build_operation_asm()
+                    self.insert_operation()
                 ),
 
                 // 1-parameter operation
                 ArithmeticOp::Negate | ArithmeticOp::Not 
-                => writeln!(target, 
-                    "@SP\n
-                    A=M-1\n
+                => writeln!(target, "@SP\n\
+                    A=M-1\n\
                     {}",
-                    self.build_operation_asm()
+                    self.insert_operation()
                 )
             };
         }
 
-        fn build_operation_asm(&self) -> &str {
+        fn insert_operation(&self) -> &str {
             match self {
                 ArithmeticOp::Add => "M=D+M",
                 ArithmeticOp::Subtract => "M=M-D",
@@ -221,24 +249,6 @@ mod code {
         }
     }
     
-    pub struct Compare(CompareOp);
-    
-    impl Compare {
-        fn parse(operation_string: &str) -> Result<Compare, InvalidKeywordError> {
-            use CompareOp::*;
-            
-            let operation = match operation_string {
-                "eq"  => Compare(Equate),
-                "gt"  => Compare(GreaterThan),
-                "lt"  => Compare(LessThan),
-
-                _ => return Err(InvalidKeywordError)
-            };
-
-            Ok(operation)
-        }
-    }
-
     pub enum CompareOp {
         Equate,
         GreaterThan,
@@ -247,29 +257,29 @@ mod code {
 
     impl CompareOp {
         pub fn emit_asm(&self, target: &mut String, label: String) {
+
             use std::fmt::Write;
-            writeln!(target,
-                "@SP\n
-                AM=M-1\n
-                D=M\n
-                A=A-1\n
-                D=M-D\n
-                M=-1\n
-                @{}\n
-                D; {}\n
-                @SP\n
-                A=M-1\n
-                M=0\n
-                ({})
-                ",
+            writeln!(target, "@SP\n\
+                AM=M-1\n\
+                D=M\n\
+                A=A-1\n\
+                D=M-D\n\
+                M=-1\n\
+                @{}\n\
+                D;{}\n\
+                @SP\n\
+                A=M-1\n\
+                M=0\n\
+                ({})",
                 label,
-                self.build_operation_asm(),
+                self.insert_operation(),
                 label
             )
             .expect("Failed to write to target in CompareOp::emit_asm")
+
         }
 
-        fn build_operation_asm(&self) -> &str {
+        fn insert_operation(&self) -> &str {
             match self {
                 CompareOp::Equate => "JEQ",
                 CompareOp::GreaterThan => "JGT",
@@ -278,33 +288,95 @@ mod code {
         }
     }
 
-    pub struct StackOperation(StackOp);
-    
-    impl StackOperation {
-        fn parse(operation_string: &str) 
-        -> Result<Self, InvalidKeywordError> {
-            use StackOp::*;
-
-            let operation = match operation_string {
-                "push" => StackOperation(Push),
-                "pop" => StackOperation(Pop),
-                
-                _ => return Err(InvalidKeywordError)
-            };
-
-            Ok(operation)
-        }   
-    }
-
     pub enum StackOp {
         Push,
         Pop
     }
 
     impl StackOp {
-        pub fn emit_asm(&self, target: &mut String, ) {
-            match self {
-                _ => ()
+        pub fn emit_asm(&self, target: &mut String, segment: Segment, index: u16, static_label: &String)-> () {
+
+            use Segment::*;
+            use std::fmt::Write;
+
+            let _ = match (self, segment) {
+                (StackOp::Push, Constant) => {
+                    writeln!(target,"@{}\n\
+                    D=A\n\
+                    @SP\n\
+                    M=M+1\n\
+                    A=M-1\n\
+                    M=D",
+                    index)
+                }
+
+                (StackOp::Push, seg @ ( Local | Argument | This | That )) => {
+                    writeln!(target,"@{}\n\
+                    D=A\n\
+                    @{}\n\
+                    A=D+M\n\
+                    D=M\n\
+                    @SP\n\
+                    M=M+1\n\
+                    A=M-1\n\
+                    M=D",
+                    index,
+                    seg.get_memlabel(static_label, &index).unwrap())
+                },
+
+                (StackOp::Push, seg @ ( Temp | Static )) => {
+                    writeln!(target,"@{}\n\
+                    D=M\n\
+                    @SP\n\
+                    M=M+1\n\
+                    A=M-1\n\
+                    M=D",
+                    seg.get_memlabel(static_label, &index).unwrap())
+                },
+
+                (StackOp::Push, seg @ Pointer) => {
+                    writeln!(target,"(TODO)"
+                )},
+
+                (StackOp::Pop, Constant) => 
+                    panic!("Cannot pop on virtual segment \"Constant\" "),
+
+                (StackOp::Pop, seg @ ( Local | Argument | This | That )) => {
+                    writeln!(target,"@{}\n\
+                    D=A\n\
+                    @{}\n\
+                    D=D+M\n\
+                    @R13\n\
+                    M=D\n\
+                    @SP\n\
+                    AM=M-1\n\
+                    D=M\n\
+                    @R13\n\
+                    A=M\n\
+                    M=D",
+                    index,
+                    seg.get_memlabel(static_label, &index).unwrap())
+                },
+
+                (StackOp::Pop, seg @ ( Temp | Static )) => {
+                    writeln!(target,"@{}\n\
+                    D=A\n\
+                    @R13\n\
+                    M=D\n\
+                    @SP\n\
+                    AM=M-1\n\
+                    D=M\n\
+                    @R13\n\
+                    A=M\n\
+                    M=D",
+                    seg.get_memlabel(static_label, &index).unwrap())
+                },
+
+                (StackOp::Pop, seg @ Pointer) => {
+                    writeln!(target,"(TODO)"
+                )},
+
+
             };
         }
     }

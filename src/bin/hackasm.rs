@@ -10,6 +10,13 @@ fn main() {
     let file_lines = parser::bufreader_from_path(&input_file_path)
         .expect("Unable to read .asm file. The following error was produced:");
 
+    // Create output file to move file extension check upstream.
+    use std::fmt::Write;
+    let mut output_file_path = input_file_path
+        .strip_suffix(".asm")
+        .expect("Input file is not of type .asm")
+        .to_string();
+
     // FIRST PASS: String preprocessing
     let mut symbol_table = SymbolTable::build_default();
 
@@ -70,12 +77,6 @@ fn main() {
         .unwrap_or(&final_lines);
 
     // Write output to file
-    use std::fmt::Write;
-    let mut output_file_path = input_file_path
-        .strip_suffix(".asm")
-        .unwrap()
-        .to_string();
-
     output_file_path
     .write_str(".hack")
     .unwrap();

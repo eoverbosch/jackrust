@@ -74,7 +74,7 @@ fn main() {
         .unwrap_or(&output_code);
 
     // Save to output file
-    let output_file_path = parser::get_output_path_from_env(".vm", ".hack");
+    let output_file_path = parser::get_output_path_from_env(".vm", ".asm");
 
     fs::write(
         output_file_path,
@@ -154,6 +154,10 @@ mod code {
                     if index > &8 {panic!("Temp index is outside segment bounds")}
                     (5 + index).to_string().to_owned()
                 }, 
+                Pointer => {
+                    if index > &1 {panic!("pointer index is outside segment bounds")}
+                    (3 + index).to_string().to_owned()
+                },
 
                 _ => return Err(NoAvailableMemlabelError)
             };
@@ -324,7 +328,7 @@ mod code {
                     seg.get_memlabel(static_label, &index).unwrap())
                 },
 
-                (StackOp::Push, seg @ ( Temp | Static )) => {
+                (StackOp::Push, seg @ ( Temp | Static | Pointer )) => {
                     writeln!(target,"@{}\n\
                     D=M\n\
                     @SP\n\
@@ -333,10 +337,6 @@ mod code {
                     M=D",
                     seg.get_memlabel(static_label, &index).unwrap())
                 },
-
-                (StackOp::Push, seg @ Pointer) => {
-                    writeln!(target,"(TODO)"
-                )},
 
                 (StackOp::Pop, Constant) => 
                     panic!("Cannot pop on virtual segment \"Constant\" "),
@@ -358,7 +358,7 @@ mod code {
                     seg.get_memlabel(static_label, &index).unwrap())
                 },
 
-                (StackOp::Pop, seg @ ( Temp | Static )) => {
+                (StackOp::Pop, seg @ ( Temp | Static | Pointer )) => {
                     writeln!(target,"@{}\n\
                     D=A\n\
                     @R13\n\
@@ -371,12 +371,6 @@ mod code {
                     M=D",
                     seg.get_memlabel(static_label, &index).unwrap())
                 },
-
-                (StackOp::Pop, seg @ Pointer) => {
-                    writeln!(target,"(TODO)"
-                )},
-
-
             };
         }
     }

@@ -65,6 +65,10 @@ fn main() {
                 stack_operation.emit_asm(&mut output_code, segment, index, &filename)
 
             }
+
+            VMOperation::BranchOperation(branch_operation) => {
+                branch_operation // Oh I gotta expand on second keyword parsing
+            }
         }
     }
 
@@ -85,9 +89,15 @@ fn main() {
 
 
 mod code {
+    use crate::code::BranchOp::Label;
+
 
     pub fn generate_comp_label(filename: &String, id: u16) -> String {
         filename.to_owned() + ".vmcomp." + &id.to_string()
+    }
+
+    pub fn generate_goto_label(filename: &String, id: &String) -> String {
+        filename.to_owned() + ".vmgoto." + id
     }
 
     pub struct LabelCounter(u16);
@@ -172,7 +182,8 @@ mod code {
     pub enum VMOperation {
         Arithmetic(ArithmeticOp),
         Compare(CompareOp),
-        StackOperation(StackOp)
+        StackOperation(StackOp),
+        BranchOperation(BranchOp)
     }
 
     impl VMOperation {
@@ -182,6 +193,8 @@ mod code {
             use ArithmeticOp::*;
             use CompareOp::*;
             use StackOp::*;
+            use BranchOp::*;
+
             let operation = match operation_string {
                 "add"  => VMOperation::Arithmetic(Add),
                 "sub"  => VMOperation::Arithmetic(Subtract),
@@ -196,6 +209,10 @@ mod code {
 
                 "push" => VMOperation::StackOperation(Push),
                 "pop"  => VMOperation::StackOperation(Pop),
+
+                "label" => VMOperation::BranchOperation(Label),
+                "goto" => VMOperation::BranchOperation(Goto),
+                "if-goto" => VMOperation::BranchOperation(IfGoto),
 
                 _ => return Err(InvalidKeywordError)
             };
@@ -371,6 +388,37 @@ mod code {
                     M=D",
                     seg.get_memlabel(static_label, &index).unwrap())
                 },
+            };
+        }
+    }
+
+    pub enum BranchOp {
+        Label,
+        Goto,
+        IfGoto
+    }
+
+    impl BranchOp {
+        pub fn emit_asm(&self, target: &mut String, branch_label: &String, filename: &String)-> () {
+            use std::fmt::Write;
+
+            let _ = match self {
+                BranchOp::Label => {
+                    writeln!(target,"({})",
+                    generate_goto_label(filename, branch_label))
+                }
+
+                BranchOp::Goto => {
+                    writeln!(target,"@{}\n\
+                    0;JMP",
+                    generate_goto_label(filename, branch_label))
+                },
+
+                BranchOp::IfGoto => {
+                    writeln!(target,"@{}\n\
+                    TODO: Finish this code and remove suffix from filename label",
+                    generate_goto_label(filename, branch_label))
+                }
             };
         }
     }

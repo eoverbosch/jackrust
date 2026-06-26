@@ -127,7 +127,7 @@ mod code {
 
     #[derive(Debug)]
     pub struct NoAvailableMemlabelError;
-    
+
     pub enum Segment {
         Constant,
         Local,
@@ -424,8 +424,11 @@ mod code {
                 },
 
                 BranchOp::IfGoto => {
-                    writeln!(target,"@{}\n\
-                    TODO: Finish this code and remove suffix from filename label",
+                    writeln!(target,"@SP
+                    AM=M-1
+                    D=M
+                    @{}\n\
+                    D;JNE", 
                     generate_goto_label(filename, branch_label))
                 }
             };

@@ -424,9 +424,9 @@ mod code {
                 },
 
                 BranchOp::IfGoto => {
-                    writeln!(target,"@SP
-                    AM=M-1
-                    D=M
+                    writeln!(target,"@SP\n\
+                    AM=M-1\n\
+                    D=M\n\
                     @{}\n\
                     D;JNE", 
                     generate_goto_label(filename, branch_label))

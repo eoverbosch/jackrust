@@ -5,7 +5,8 @@ use std::fs;
 
 fn main() {
     let input_file_path = parser::get_path_from_env();
-    let filename = parser::get_filename_from_env();
+    let filename = parser::get_filename_from_env().strip_suffix(".vm")
+        .expect("Input file is not of type .vm").to_owned();
     let file_line_buffer = parser::bufreader_from_path(&input_file_path)
         .expect("Unable to read .vm file. The following error was produced");
 
@@ -24,7 +25,7 @@ fn main() {
             .split_once(char::is_whitespace)
             .unwrap_or((&line, ""));
 
-        let (segment_string, index_string) = rhs
+        let (argument_string, index_string) = rhs
             .split_once(char::is_whitespace)
             .unwrap_or((&rhs, ""));
 
@@ -37,7 +38,7 @@ fn main() {
         match operation {
             VMOperation::Arithmetic(arithmetic_operation) => {
 
-                if !segment_string.is_empty() || !index_string.is_empty() {
+                if !argument_string.is_empty() || !index_string.is_empty() {
                     panic!(
                         "Syntax error on line {}: arithmetic operation takes no arguments", 
                         line_number
@@ -58,7 +59,7 @@ fn main() {
 
             VMOperation::StackOperation(stack_operation) => {
                 let segment: Segment 
-                    = Segment::parse(segment_string).unwrap();
+                    = Segment::parse(argument_string).unwrap();
 
                 let index = index_string.parse::<u16>().unwrap();
 
@@ -67,7 +68,14 @@ fn main() {
             }
 
             VMOperation::BranchOperation(branch_operation) => {
-                branch_operation // Oh I gotta expand on second keyword parsing
+                if !index_string.is_empty() {
+                    panic!(
+                        "Syntax error on line {}: branch operation takes no index arguments", 
+                        line_number
+                    )
+                }
+
+                branch_operation.emit_asm(&mut output_code, &argument_string.to_owned(), &filename); 
             }
         }
     }
@@ -89,15 +97,16 @@ fn main() {
 
 
 mod code {
-    use crate::code::BranchOp::Label;
-
+    pub fn generate_static_label(filename: &String, index: &u16) -> String {
+        filename.to_owned() + ".static." + &index.to_string()
+    }
 
     pub fn generate_comp_label(filename: &String, id: u16) -> String {
-        filename.to_owned() + ".vmcomp." + &id.to_string()
+        filename.to_owned() + ".comp." + &id.to_string()
     }
 
     pub fn generate_goto_label(filename: &String, id: &String) -> String {
-        filename.to_owned() + ".vmgoto." + id
+        filename.to_owned() + ".goto." + id
     }
 
     pub struct LabelCounter(u16);
@@ -115,8 +124,10 @@ mod code {
 
     #[derive(Debug)]
     pub struct InvalidSegmentError;
+
     #[derive(Debug)]
     pub struct NoAvailableMemlabelError;
+    
     pub enum Segment {
         Constant,
         Local,
@@ -149,17 +160,15 @@ mod code {
             Ok(segment)
         }
 
-        pub fn get_memlabel(&self, static_label: &String, index: &u16) -> Result<String, NoAvailableMemlabelError> {
+        pub fn get_memlabel(&self, filename: &String, index: &u16) -> Result<String, NoAvailableMemlabelError> {
             use Segment::*;
-
-
 
             let memlabel = match self {
                 Local => "LCL".to_owned(),
                 Argument => "ARG".to_owned(),
                 This => "THIS".to_owned(),
                 That => "THAT".to_owned(),
-                Static => static_label.to_owned() + "." + &index.to_string(),
+                Static => generate_static_label(filename, index),
                 Temp => {
                     if index > &8 {panic!("Temp index is outside segment bounds")}
                     (5 + index).to_string().to_owned()

@@ -51,7 +51,6 @@ fn main() {
 
             VMOperation::Compare(compare_operation) => {
                 compare_operation.emit_asm(
-
                     &mut output_code,
                     code::generate_comp_label(&filename, label_counter.get())
                 )
@@ -64,15 +63,12 @@ fn main() {
                 let index = index_string.parse::<u16>().unwrap();
 
                 stack_operation.emit_asm(&mut output_code, segment, index, &filename)
-
             }
 
             VMOperation::BranchOperation(branch_operation) => {
                 if !index_string.is_empty() {
-                    panic!(
-                        "Syntax error on line {}: branch operation takes no index arguments", 
-                        line_number
-                    )
+                    panic!("Syntax error on line {}: branch operation takes no index arguments", 
+                        line_number)
                 }
 
                 branch_operation.emit_asm(&mut output_code, &argument_string.to_owned(), &filename); 

@@ -1,6 +1,8 @@
 use jackrust::parser;
 use code::*;
+use code::labels;
 use std::fs;
+
 
 
 fn main() {
@@ -14,6 +16,7 @@ fn main() {
     let code_lines = file_line_buffer
         .map(Result::unwrap) 
         .map(parser::strip_comments)
+        .map(|line| line.trim().to_string())
         .filter(|line| !line.is_empty());
 
     // Parse code and push into output
@@ -31,8 +34,7 @@ fn main() {
 
         let operation = VMOperation::parse(operation_string)
             .unwrap_or_else(|_| panic!(
-                "Syntax error on line {line_number}: \"{line}\"
-                \n{operation_string} is not a valid operation."
+                "Syntax error on line {line_number}: \"{line}\"\n{operation_string} is not a valid operation."
             ));
 
         match operation {
@@ -46,13 +48,12 @@ fn main() {
                 }
 
                 arithmetic_operation.emit_asm(&mut output_code)
-
             },
 
             VMOperation::Compare(compare_operation) => {
                 compare_operation.emit_asm(
                     &mut output_code,
-                    code::generate_comp_label(&filename, label_counter.get())
+                    labels::generate_comp_label(&filename, label_counter.get())
                 )
             },
 
@@ -93,16 +94,34 @@ fn main() {
 
 
 mod code {
-    pub fn generate_static_label(filename: &String, index: &u16) -> String {
-        filename.to_owned() + ".static." + &index.to_string()
+    #[allow(dead_code)]
+    pub mod labels {
+        pub fn generate_static_label(filename: &String, index: &u16) -> String {
+            filename.to_owned() + "." + &index.to_string()
+        }
+
+        pub fn generate_comp_label(filename: &String, id: u16) -> String {
+            filename.to_owned() + ".cmp." + &id.to_string()
+        }
+
+        pub fn generate_goto_label(filename: &String, id: &String) -> String {
+            filename.to_owned() + "." + id
+        }
     }
 
-    pub fn generate_comp_label(filename: &String, id: u16) -> String {
-        filename.to_owned() + ".comp." + &id.to_string()
-    }
+    #[allow(dead_code)]
+    pub mod labels_old {
+        pub fn generate_static_label(filename: &String, index: &u16) -> String {
+            filename.to_owned() + ".static." + &index.to_string()
+        }
 
-    pub fn generate_goto_label(filename: &String, id: &String) -> String {
-        filename.to_owned() + ".goto." + id
+        pub fn generate_comp_label(filename: &String, id: u16) -> String {
+            filename.to_owned() + ".comp." + &id.to_string()
+        }
+
+        pub fn generate_goto_label(filename: &String, id: &String) -> String {
+            filename.to_owned() + ".goto." + id
+        }
     }
 
     pub struct LabelCounter(u16);
@@ -164,7 +183,7 @@ mod code {
                 Argument => "ARG".to_owned(),
                 This => "THIS".to_owned(),
                 That => "THAT".to_owned(),
-                Static => generate_static_label(filename, index),
+                Static => labels::generate_static_label(filename, index),
                 Temp => {
                     if index > &8 {panic!("Temp index is outside segment bounds")}
                     (5 + index).to_string().to_owned()
@@ -188,7 +207,8 @@ mod code {
         Arithmetic(ArithmeticOp),
         Compare(CompareOp),
         StackOperation(StackOp),
-        BranchOperation(BranchOp)
+        BranchOperation(BranchOp),
+        FunctionOperation(FunctionOp)
     }
 
     impl VMOperation {
@@ -410,13 +430,13 @@ mod code {
             let _ = match self {
                 BranchOp::Label => {
                     writeln!(target,"({})",
-                    generate_goto_label(filename, branch_label))
+                    labels::generate_goto_label(filename, branch_label))
                 }
 
                 BranchOp::Goto => {
                     writeln!(target,"@{}\n\
                     0;JMP",
-                    generate_goto_label(filename, branch_label))
+                    labels::generate_goto_label(filename, branch_label))
                 },
 
                 BranchOp::IfGoto => {
@@ -425,7 +445,41 @@ mod code {
                     D=M\n\
                     @{}\n\
                     D;JNE", 
-                    generate_goto_label(filename, branch_label))
+                    labels::generate_goto_label(filename, branch_label))
+                }
+            };
+        }
+    }
+
+    pub enum FunctionOp {
+        Call,
+        Function,
+        Return
+    }
+
+    impl FunctionOp {
+        pub fn emit_asm(&self, target: &mut String, branch_label: &String, filename: &String)-> () {
+            use std::fmt::Write;
+
+            let _ = match self {
+                FunctionOp::Call => {
+                    writeln!(target,"({})",
+                    labels::generate_goto_label(filename, branch_label))
+                }
+
+                FunctionOp::Function => {
+                    writeln!(target,"@{}\n\
+                    0;JMP",
+                    labels::generate_goto_label(filename, branch_label))
+                },
+
+                FunctionOp::Return => {
+                    writeln!(target,"@SP\n\
+                    AM=M-1\n\
+                    D=M\n\
+                    @{}\n\
+                    D;JNE", 
+                    labels::generate_goto_label(filename, branch_label))
                 }
             };
         }

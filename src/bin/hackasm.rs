@@ -32,11 +32,11 @@ fn main() {
         // If L-instruction
         if let Some(unprocessed_statement) = line.strip_prefix("(") {
             let symbol_statement =
-            unprocessed_statement
-            .strip_suffix(")")
-            .unwrap_or_else(
-                || panic!("Syntax error in symbol statement: Closing bracket missing or incorrectly placed")
-            );
+                unprocessed_statement
+                .strip_suffix(")")
+                .unwrap_or_else(
+                    || panic!("Syntax error in symbol statement: Closing bracket missing or incorrectly placed")
+                );
 
             symbol_table.insert_new(
                 symbol_statement.to_string(),

@@ -116,7 +116,6 @@ mod hack_assembler {
             };
 
             format!("{:016b}", instruction_as_integer) // Format as binary and return
-
         }
 
         pub fn c_instruction(line: &str) -> String{

@@ -14,7 +14,7 @@ M=D
 
 //push (example: push local 2) local/argument/this/that/temp
 // get *LCL + i address 
-@2
+@
 D=A
 @LCL
 A=D+M

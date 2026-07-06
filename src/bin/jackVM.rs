@@ -19,9 +19,9 @@ fn main() {
         .map(|line| line.trim().to_string())
         .filter(|line| !line.is_empty());
 
-    // Parse code and push into output
     let mut output_code = String::new();
     let mut label_counter = LabelCounter::new();
+    let mut function_def_tracker = FunctionDefTracker::new();
 
     for (line_number, line) in code_lines.enumerate() {
         let (operation_string, rhs) = line
@@ -53,7 +53,7 @@ fn main() {
             VMOperation::Compare(compare_operation) => {
                 compare_operation.emit_asm(
                     &mut output_code,
-                    labels::generate_comp_label(&filename, label_counter.get())
+                    labels::generate_compare_label(&filename, label_counter.get())
                 )
             },
 
@@ -74,8 +74,69 @@ fn main() {
 
                 branch_operation.emit_asm(&mut output_code, &argument_string.to_owned(), &filename); 
             }
+
+            VMOperation::FunctionOperation(function_operation) => {
+                match function_operation {
+                    FunctionOp::Return => {
+                        if !argument_string.is_empty() || !index_string.is_empty() {
+                            panic!("Syntax error on line {}: function operation \"return\" takes no arguments", 
+                                line_number
+                            );
+                        }
+
+                        let n_vars = function_def_tracker.process_return().unwrap();
+
+                        function_operation.emit_asm(
+                            &mut output_code, 
+                            &argument_string.to_owned(),
+                            n_vars,
+                            &"".to_string()
+                        )
+                    },
+
+                    FunctionOp::Function => {
+                        let index = index_string.parse::<u16>().unwrap_or_else(
+                            |_| panic!("Syntax error on line {}: 
+                                Index string parsing failed for function operation {:?} {}",
+                                line_number,
+                                function_operation,
+                                argument_string
+                            )
+                        );
+
+                        function_def_tracker.process_define(index);
+                            
+                        function_operation.emit_asm(
+                            &mut output_code, 
+                            &argument_string.to_owned(),
+                            index,
+                            &"".to_string()
+                        )
+                    },
+
+                    FunctionOp::Call => {
+                        let index = index_string.parse::<u16>().unwrap_or_else(
+                            |_| panic!("Syntax error on line {}: 
+                                Index string parsing failed for function operation {:?} {}",
+                                line_number,
+                                function_operation,
+                                argument_string
+                            )
+                        );
+
+                        function_operation.emit_asm(
+                        &mut output_code, 
+                        &argument_string.to_owned(),
+                        index,
+                        &label_counter.get().to_string()
+                    )}    
+                }
+            }
         }
     }
+
+    // Checks if all functions were properly closed
+    function_def_tracker.check_empty().unwrap();
 
     // Remove extra new line
     let output_code = output_code
@@ -100,27 +161,72 @@ mod code {
             filename.to_owned() + "." + &index.to_string()
         }
 
-        pub fn generate_comp_label(filename: &String, id: u16) -> String {
+        pub fn generate_compare_label(filename: &String, id: u16) -> String {
             filename.to_owned() + ".cmp." + &id.to_string()
         }
 
-        pub fn generate_goto_label(filename: &String, id: &String) -> String {
-            filename.to_owned() + "." + id
+        pub fn generate_return_label(function_label: &String, id: &String) -> String {
+            function_label.to_owned() + "$ret." + id
+        }
+
+        pub fn generate_goto_label(function_label: &String, id: &String) -> String {
+            if function_label.is_empty() {
+                return id.to_owned()
+            }
+            else {
+                return function_label.to_owned() + "$" + id
+            }
         }
     }
 
-    #[allow(dead_code)]
-    pub mod labels_old {
-        pub fn generate_static_label(filename: &String, index: &u16) -> String {
-            filename.to_owned() + ".static." + &index.to_string()
+    /// Represent a function call with n_vars variables.
+    pub struct FunctionDef(u16);
+
+    impl FunctionDef {
+        pub fn new(n_vars: u16) -> FunctionDef {
+            FunctionDef(n_vars)
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct RadicalReturnError;
+    #[derive(Debug)]
+    pub struct NestedFunctionError;
+    #[derive(Debug)]
+    pub struct UnclosedFunctionError;
+
+    pub struct FunctionDefTracker(Option<FunctionDef>);
+
+    impl FunctionDefTracker {
+        pub fn new() -> FunctionDefTracker {
+            FunctionDefTracker(None)
         }
 
-        pub fn generate_comp_label(filename: &String, id: u16) -> String {
-            filename.to_owned() + ".comp." + &id.to_string()
+        #[allow(dead_code)]
+        pub fn process_define_strict(&mut self, n_vars: u16) -> Result<(), NestedFunctionError> {
+            match self.0 {
+                Some(_) => Err(NestedFunctionError),
+                None => {self.0 = Some(FunctionDef::new(n_vars)); Ok(())}
+            }
         }
 
-        pub fn generate_goto_label(filename: &String, id: &String) -> String {
-            filename.to_owned() + ".goto." + id
+        pub fn process_define(&mut self, n_vars: u16) {
+            self.0 = Some(FunctionDef::new(n_vars));
+        }        
+
+        pub fn process_return(&mut self) -> Result<u16, RadicalReturnError> {
+            match &self.0.take() {
+                Some(def) => Ok(def.0),
+                None => Err(RadicalReturnError)
+            }
+                
+        }
+
+        pub fn check_empty(self) -> Result<(),UnclosedFunctionError> {
+            match &self.0 {
+                Some(_) => Err(UnclosedFunctionError),
+                None => Ok(())
+            }
         }
     }
 
@@ -215,29 +321,30 @@ mod code {
         pub fn parse(operation_string: &str)
         -> Result<VMOperation, InvalidKeywordError> {
             
-            use ArithmeticOp::*;
-            use CompareOp::*;
-            use StackOp::*;
-            use BranchOp::*;
+            use VMOperation::*;
 
             let operation = match operation_string {
-                "add"  => VMOperation::Arithmetic(Add),
-                "sub"  => VMOperation::Arithmetic(Subtract),
-                "neg"  => VMOperation::Arithmetic(Negate),
-                "and"  => VMOperation::Arithmetic(And),
-                "or"   => VMOperation::Arithmetic(Or),
-                "not"  => VMOperation::Arithmetic(Not),
+                "add"  => Arithmetic(ArithmeticOp::Add),
+                "sub"  => Arithmetic(ArithmeticOp::Subtract),
+                "neg"  => Arithmetic(ArithmeticOp::Negate),
+                "and"  => Arithmetic(ArithmeticOp::And),
+                "or"   => Arithmetic(ArithmeticOp::Or),
+                "not"  => Arithmetic(ArithmeticOp::Not),
 
-                "eq"   => VMOperation::Compare(Equate),
-                "gt"   => VMOperation::Compare(GreaterThan),
-                "lt"   => VMOperation::Compare(LessThan),
+                "eq"   => Compare(CompareOp::Equate),
+                "gt"   => Compare(CompareOp::GreaterThan),
+                "lt"   => Compare(CompareOp::LessThan),
 
-                "push" => VMOperation::StackOperation(Push),
-                "pop"  => VMOperation::StackOperation(Pop),
+                "push" => StackOperation(StackOp::Push),
+                "pop"  => StackOperation(StackOp::Pop),
 
-                "label" => VMOperation::BranchOperation(Label),
-                "goto" => VMOperation::BranchOperation(Goto),
-                "if-goto" => VMOperation::BranchOperation(IfGoto),
+                "label"   => BranchOperation(BranchOp::Label),
+                "goto"    => BranchOperation(BranchOp::Goto),
+                "if-goto" => BranchOperation(BranchOp::IfGoto),
+
+                "function" => FunctionOperation(FunctionOp::Function),
+                "call"     => FunctionOperation(FunctionOp::Call),
+                "return"   => FunctionOperation(FunctionOp::Return),
 
                 _ => return Err(InvalidKeywordError)
             };
@@ -451,6 +558,7 @@ mod code {
         }
     }
 
+    #[derive(Debug)]
     pub enum FunctionOp {
         Call,
         Function,
@@ -458,28 +566,123 @@ mod code {
     }
 
     impl FunctionOp {
-        pub fn emit_asm(&self, target: &mut String, branch_label: &String, filename: &String)-> () {
+        pub fn emit_asm(&self, target: &mut String, function_label: &String, n: u16, id: &String)-> () {
             use std::fmt::Write;
 
             let _ = match self {
-                FunctionOp::Call => {
-                    writeln!(target,"({})",
-                    labels::generate_goto_label(filename, branch_label))
-                }
-
                 FunctionOp::Function => {
-                    writeln!(target,"@{}\n\
-                    0;JMP",
-                    labels::generate_goto_label(filename, branch_label))
+                    writeln!(target,"({})\n\
+                    @SP\n\
+                    D=M\n\
+                    @LCL\n\
+                    AM=D\n\
+                    {}\
+                    D=A\n\
+                    @SP\n\
+                    M=D",
+                    function_label,
+                    "M=0\nA=A+1\n".repeat(n as usize),
+                    )
+                }
+        
+                FunctionOp::Call => {
+                    let return_label = labels::generate_return_label(function_label, id);
+
+                    writeln!(target,"@ARG\n\
+                    D=M\n\
+                    @R14\n\
+                    M=D\n\
+                    @SP\n\
+                    D=M\n\
+                    @{}\n\
+                    D=D-A\n\
+                    @ARG\n\
+                    M=D\n\
+                    @{}\n\
+                    D=A\n\
+                    @SP\n\
+                    M=M+1\n\
+                    A=M-1\n\
+                    M=D\n\
+                    @LCL\n\
+                    D=M\n\
+                    @SP\n\
+                    M=M+1\n\
+                    A=M-1\n\
+                    M=D\n\
+                    @R14\n\
+                    D=M\n\
+                    @SP\n\
+                    M=M+1\n\
+                    A=M-1\n\
+                    M=D\n\
+                    @THIS\n\
+                    D=M\n\
+                    @SP\n\
+                    M=M+1\n\
+                    A=M-1\n\
+                    M=D\n\
+                    @THAT\n\
+                    D=M\n\
+                    @SP\n\
+                    M=M+1\n\
+                    A=M-1\n\
+                    M=D\n\
+                    @{}\n\
+                    0;JMP\n\
+                    ({})",
+                    n,
+                    return_label,
+                    function_label,
+                    return_label
+                    )
                 },
 
                 FunctionOp::Return => {
-                    writeln!(target,"@SP\n\
-                    AM=M-1\n\
+                    writeln!(target,"@ARG\n\
                     D=M\n\
                     @{}\n\
-                    D;JNE", 
-                    labels::generate_goto_label(filename, branch_label))
+                    A=D+A\n\
+                    D=M\n\
+                    @R13\n\
+                    M=D\n\
+                    @SP\n\
+                    A=M-1\n\
+                    D=M\n\
+                    @ARG\n\
+                    A=M\n\
+                    M=D\n\
+                    D=A+1\n\
+                    @SP\n\
+                    M=D\n\
+                    @{}\n\
+                    D=D+A\n\
+                    @R14\n\
+                    AM=D\n\
+                    D=M\n\
+                    @LCL\n\
+                    M=D\n\
+                    @R14\n\
+                    AM=M+1\n\
+                    D=M\n\
+                    @ARG\n\
+                    M=D\n\
+                    @R14\n\
+                    AM=M+1\n\
+                    D=M\n\
+                    @THIS\n\
+                    M=D\n\
+                    @R14\n\
+                    AM=M+1\n\
+                    D=M\n\
+                    @THAT\n\
+                    M=D\n\
+                    @R13\n\
+                    A=M\n\
+                    0;JMP",
+                    n,
+                    n 
+                    )
                 }
             };
         }

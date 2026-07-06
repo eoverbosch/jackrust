@@ -129,6 +129,71 @@ M=D   // *SP == stacktop = D == THAT
 //
 //  *Assembly:
 
+// Save temp pointer at return address and save value
+@LCL    // A = LCL_addr
+D=M     // D = *LCL_addr == LCL
+@5      // A = 5
+D=D-A   // D = LCL - 5
+@R14    // A = R14_addr
+AM=D    // R14 = LCL-5, A = LCL-5
+D=M     // D = *(LCL-5) == ret_label
+@R13    // A = R13_addr
+M=D     // R13 = ret_label
+
+// Set LCL-5-1 = stacktop == result
+@SP       // A = SP_addr
+A=M-1     // A = *SP_Addr - 1 == SP-1
+D=M       // D = *(SP-1) == last_stack_value 
+@ARG      // A = ARG_addr
+A=M       // A = ARG
+M=D       // *ARG = last_stack_value
+
+// Set stack pointer to LCL-5 (ARG_end + 1) and save pointer increment to R14
+D=A+1   // D = (LCL-6) + 1 
+@SP     // A = SP_Addr
+AM=D    // *SP_addr == SP = LCL-5, A = LCL-5
+D=A+1   // A = (LCL-5)+1
+@R14    // A = R14_addr
+AM=D     // R14 = LCL-4, A=LCL-4
+
+// Restore previous stack frame
+//   LCL
+D=M    // D = *(LCL-4) == LCLs
+@LCL   // A = LCL_addr
+M=D    // *LCL_addr == LCLr = LCLs
+
+@R14   // A = R14_addr
+AM=M+1 // A = R14 + 1 == (LCL-4)+1, R14 = (LCL-4)+1
+
+//   ARG
+D=M    // D = *(LCL-3) == ARGs
+@ARG   // A = ARG_addr
+M=D    // *ARG_addr == ARGr = ARGs
+
+@R14   // A = R14_addr
+AM=M+1 // A = R14 + 1 == (LCL-3)+1, R14 = (LCL-3)+1
+
+//   THIS
+D=M    // D = *(LCL-2) == THISs
+@THIS  // A = THIS_addr
+M=D    // *THIS_addr == THISr = THISs
+
+@R14   // A = R14_addr
+AM=M+1 // A = R14 + 1 == (LCL-2)+1, R14 = (LCL-2)+1
+
+//   THAT
+D=M    // D = *(LCL-1) == THATs
+@THAT  // A = THAT_addr
+M=D    // *THAT_addr == THATr = THATs
+
+// Get return address and jump 
+@R13   // A = R13_addr
+A=M    // A = R13 
+0;JMP
+
+
+/////// OLD ///////
+
 // Save return label at ARG+n_args
 @ARG    // A = ARG_addr
 D=M     // D = *ARG_addr == ARG
@@ -151,7 +216,7 @@ D=A+1 // D = ARG + 1
 @SP   // A = SP_Addr
 M=D   // *SP_addr == SP = ARG+1
 
-// Store temp pointer
+// Store temp pointer starting at ARG+1+n_args
 @n_args // A = n_args
 D=D+A   // D = ARG+1+n_args == LCL_saved_addr. A is now a virtual stack pointer to saved LCL.
 @R14    // A = R14_addr

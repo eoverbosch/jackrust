@@ -72,7 +72,17 @@ fn main() {
                         line_number)
                 }
 
-                branch_operation.emit_asm(&mut output_code, &argument_string.to_owned(), &filename); 
+                let branch_label_prefix: String
+                    = function_def_tracker
+                    .get_current_label()
+                    .unwrap_or(filename.to_owned());
+
+                let branch_label = labels::generate_goto_label(
+                    branch_label_prefix, 
+                    &argument_string.to_owned()
+                );
+
+                branch_operation.emit_asm(&mut output_code, &branch_label); 
             }
 
             VMOperation::FunctionOperation(function_operation) => {
@@ -84,12 +94,10 @@ fn main() {
                             );
                         }
 
-                        let n_vars = function_def_tracker.process_return().unwrap();
-
                         function_operation.emit_asm(
                             &mut output_code, 
                             &argument_string.to_owned(),
-                            n_vars,
+                            0,
                             &"".to_string()
                         )
                     },
@@ -104,7 +112,7 @@ fn main() {
                             )
                         );
 
-                        function_def_tracker.process_define(index);
+                        function_def_tracker.process_define_statement(&argument_string.to_owned());
                             
                         function_operation.emit_asm(
                             &mut output_code, 
@@ -135,9 +143,6 @@ fn main() {
         }
     }
 
-    // Checks if all functions were properly closed
-    function_def_tracker.check_empty().unwrap();
-
     // Remove extra new line
     let output_code = output_code
         .strip_suffix('\n')
@@ -162,38 +167,32 @@ mod code {
         }
 
         pub fn generate_compare_label(filename: &String, id: u16) -> String {
-            filename.to_owned() + ".cmp." + &id.to_string()
+            filename.to_owned() + "$cmp." + &id.to_string()
         }
 
         pub fn generate_return_label(function_label: &String, id: &String) -> String {
             function_label.to_owned() + "$ret." + id
         }
 
-        pub fn generate_goto_label(function_label: &String, id: &String) -> String {
-            if function_label.is_empty() {
-                return id.to_owned()
-            }
-            else {
-                return function_label.to_owned() + "$" + id
-            }
+        pub fn generate_goto_label(function_label: String, id: &String) -> String {
+            function_label.to_owned() + "$" + id
         }
     }
 
-    /// Represent a function call with n_vars variables.
-    pub struct FunctionDef(u16);
+
+    /// FunctionDef represent a vm function definition (i.e. function function_label n_vars). 
+    /// The inner fields map to function_label: String and n_vars: u16.
+    #[derive(Debug)]
+
+    pub struct FunctionDef(String);
 
     impl FunctionDef {
-        pub fn new(n_vars: u16) -> FunctionDef {
-            FunctionDef(n_vars)
+        pub fn new(function_label: &String) -> FunctionDef {
+            FunctionDef(function_label.to_owned())
         }
     }
 
     #[derive(Debug)]
-    pub struct RadicalReturnError;
-    #[derive(Debug)]
-    pub struct NestedFunctionError;
-    #[derive(Debug)]
-    pub struct UnclosedFunctionError;
 
     pub struct FunctionDefTracker(Option<FunctionDef>);
 
@@ -202,31 +201,12 @@ mod code {
             FunctionDefTracker(None)
         }
 
-        #[allow(dead_code)]
-        pub fn process_define_strict(&mut self, n_vars: u16) -> Result<(), NestedFunctionError> {
-            match self.0 {
-                Some(_) => Err(NestedFunctionError),
-                None => {self.0 = Some(FunctionDef::new(n_vars)); Ok(())}
-            }
-        }
-
-        pub fn process_define(&mut self, n_vars: u16) {
-            self.0 = Some(FunctionDef::new(n_vars));
+        pub fn process_define_statement(&mut self, function_label: &String) {
+            self.0 = Some(FunctionDef::new(function_label));
         }        
 
-        pub fn process_return(&mut self) -> Result<u16, RadicalReturnError> {
-            match &self.0.take() {
-                Some(def) => Ok(def.0),
-                None => Err(RadicalReturnError)
-            }
-                
-        }
-
-        pub fn check_empty(self) -> Result<(),UnclosedFunctionError> {
-            match &self.0 {
-                Some(_) => Err(UnclosedFunctionError),
-                None => Ok(())
-            }
+        pub fn get_current_label(&self) -> Option<String> {
+            self.0.as_ref().map(|def| def.0.to_owned())
         }
     }
 
@@ -531,19 +511,19 @@ mod code {
     }
 
     impl BranchOp {
-        pub fn emit_asm(&self, target: &mut String, branch_label: &String, filename: &String)-> () {
+        pub fn emit_asm(&self, target: &mut String, branch_label: &String)-> () {
             use std::fmt::Write;
 
             let _ = match self {
                 BranchOp::Label => {
                     writeln!(target,"({})",
-                    labels::generate_goto_label(filename, branch_label))
+                    branch_label)
                 }
 
                 BranchOp::Goto => {
                     writeln!(target,"@{}\n\
                     0;JMP",
-                    labels::generate_goto_label(filename, branch_label))
+                    branch_label)
                 },
 
                 BranchOp::IfGoto => {
@@ -552,7 +532,7 @@ mod code {
                     D=M\n\
                     @{}\n\
                     D;JNE", 
-                    labels::generate_goto_label(filename, branch_label))
+                    branch_label)
                 }
             };
         }
@@ -638,11 +618,13 @@ mod code {
                     )
                 },
 
-                FunctionOp::Return => {
-                    writeln!(target,"@ARG\n\
+                FunctionOp::Return => 
+                    writeln!(target,"@LCL\n\
                     D=M\n\
-                    @{}\n\
-                    A=D+A\n\
+                    @5\n\
+                    D=D-A\n\
+                    @R14\n\
+                    AM=D\n\
                     D=M\n\
                     @R13\n\
                     M=D\n\
@@ -655,10 +637,8 @@ mod code {
                     D=A+1\n\
                     @SP\n\
                     M=D\n\
-                    @{}\n\
-                    D=D+A\n\
                     @R14\n\
-                    AM=D\n\
+                    AM=M+1\n\
                     D=M\n\
                     @LCL\n\
                     M=D\n\
@@ -679,11 +659,7 @@ mod code {
                     M=D\n\
                     @R13\n\
                     A=M\n\
-                    0;JMP",
-                    n,
-                    n 
-                    )
-                }
+                    0;JMP")
             };
         }
     }

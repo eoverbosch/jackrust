@@ -1,4 +1,5 @@
 use jackrust::parser;
+use jackrust::vm_parser;
 use code::*;
 use code::labels;
 use std::fs;
@@ -6,14 +7,14 @@ use std::fs;
 
 
 fn main() {
-    let input_file_path = parser::get_path_from_env();
-    let filename = parser::get_filename_from_env().strip_suffix(".vm")
-        .expect("Input file is not of type .vm").to_owned();
-    let file_line_buffer = parser::bufreader_from_path(&input_file_path)
-        .expect("Unable to read .vm file. The following error was produced");
+    let config = vm_parser::Config::init().unwrap_or_else(|e| e.exit());
+    let line_reader = config.make_file_reader()
+    .unwrap_or_else(|e|
+        panic!("Failed to read {} failed with error: {e}", &config.input.as_ref().unwrap().display())
+    );
 
     // Run pre-processor
-    let code_lines = file_line_buffer
+    let code_lines = line_reader
         .map(Result::unwrap) 
         .map(parser::strip_comments)
         .map(|line| line.trim().to_string())
@@ -53,7 +54,7 @@ fn main() {
             VMOperation::Compare(compare_operation) => {
                 compare_operation.emit_asm(
                     &mut output_code,
-                    labels::generate_compare_label(&filename, label_counter.get())
+                    labels::generate_compare_label(config.get_input_name(), label_counter.get())
                 )
             },
 
@@ -63,7 +64,7 @@ fn main() {
 
                 let index = index_string.parse::<u16>().unwrap();
 
-                stack_operation.emit_asm(&mut output_code, segment, index, &filename)
+                stack_operation.emit_asm(&mut output_code, segment, index, config.get_input_name())
             }
 
             VMOperation::BranchOperation(branch_operation) => {
@@ -75,7 +76,7 @@ fn main() {
                 let branch_label_prefix: String
                     = function_def_tracker
                     .get_current_label()
-                    .unwrap_or(filename.to_owned());
+                    .unwrap_or(config.get_input_name().to_owned());
 
                 let branch_label = labels::generate_goto_label(
                     branch_label_prefix, 
@@ -147,12 +148,10 @@ fn main() {
     let output_code = output_code
         .strip_suffix('\n')
         .unwrap_or(&output_code);
-
-    // Save to output file
-    let output_file_path = parser::get_output_path_from_env(".vm", ".asm");
+ 
 
     fs::write(
-        output_file_path,
+        config.output.unwrap(),
         output_code
     )
     .expect("Unable to write to output file");
@@ -162,19 +161,19 @@ fn main() {
 mod code {
     #[allow(dead_code)]
     pub mod labels {
-        pub fn generate_static_label(filename: &String, index: &u16) -> String {
+        pub fn generate_static_label(filename: &str, index: &u16) -> String {
             filename.to_owned() + "." + &index.to_string()
         }
 
-        pub fn generate_compare_label(filename: &String, id: u16) -> String {
+        pub fn generate_compare_label(filename: &str, id: u16) -> String {
             filename.to_owned() + "$cmp." + &id.to_string()
         }
 
-        pub fn generate_return_label(function_label: &String, id: &String) -> String {
+        pub fn generate_return_label(function_label: &str, id: &str) -> String {
             function_label.to_owned() + "$ret." + id
         }
 
-        pub fn generate_goto_label(function_label: String, id: &String) -> String {
+        pub fn generate_goto_label(function_label: String, id: &str) -> String {
             function_label.to_owned() + "$" + id
         }
     }
@@ -261,7 +260,7 @@ mod code {
             Ok(segment)
         }
 
-        pub fn get_memlabel(&self, filename: &String, index: &u16) -> Result<String, NoAvailableMemlabelError> {
+        pub fn get_memlabel(&self, filename: &str, index: &u16) -> Result<String, NoAvailableMemlabelError> {
             use Segment::*;
 
             let memlabel = match self {
@@ -427,7 +426,7 @@ mod code {
     }
 
     impl StackOp {
-        pub fn emit_asm(&self, target: &mut String, segment: Segment, index: u16, static_label: &String)-> () {
+        pub fn emit_asm(&self, target: &mut String, segment: Segment, index: u16, static_label: &str)-> () {
 
             use Segment::*;
             use std::fmt::Write;

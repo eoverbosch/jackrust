@@ -23,11 +23,12 @@ enum Mode {
 /// hack assembly. Can be run in directory mode or single-file mode. 
 pub struct Config {
     /// Optional input file. If specified, runs translator in single-file mode.
-    #[arg(value_parser = Config::parse_input_file)]
-    input: Option<PathBuf>,
+    #[arg(short, long, value_parser = Config::parse_input_file)]
+    pub input: Option<PathBuf>,
     
     /// Optional output file specifier. Defaults to folder name
-    output: Option<PathBuf>,
+    #[arg(short, long)]
+    pub output: Option<PathBuf>,
 
     #[arg(skip)]
     path: PathBuf,
@@ -65,8 +66,7 @@ impl Config {
                              ASM_FILE_EXT
                             )
                     ))
-                }
-                todo!("match file extension: None: add .asm; .asm: do nothing; _: error")
+                }                
             }
 
             None => {
@@ -96,8 +96,16 @@ impl Config {
         Ok(input_file)
     }
 
-    pub fn make_file_reader(self) -> io::Result<io::Lines<io::BufReader<fs::File>>> {
-        let file = fs::File::open(self.input.unwrap())?;
+    pub fn make_file_reader(&self) -> io::Result<io::Lines<io::BufReader<fs::File>>> {
+        let file = fs::File::open(&self.input.clone().unwrap())?;
         Ok(io::BufReader::new(file).lines())
+    }
+
+    pub fn get_full_filename() -> () {}
+
+    pub fn get_input_name(&self) -> &str {
+        self.input.as_ref().unwrap()
+        .file_stem().unwrap()
+        .to_str().unwrap()
     }
 }

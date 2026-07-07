@@ -1,6 +1,30 @@
 use std::fs;
 use std::env;
 use std::io::{self, BufRead};
+use std::path::PathBuf;
+
+use clap::Parser;
+
+#[derive(Default)]
+enum Mode {
+    #[default]
+    None,
+    Assembler,
+    VmFile,
+    VmDir,    
+    Compiler,
+}
+
+#[derive(Parser)]
+struct Config {
+    #[arg(skip)]
+    mode: Mode,
+
+    /// Optional input. Required for 
+    input: Option<PathBuf>
+
+}
+
 pub fn get_file_content_from_env() -> String {
     let input_file_path = get_path_from_env();
 

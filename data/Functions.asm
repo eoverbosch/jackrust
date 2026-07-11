@@ -137,7 +137,7 @@ D=D-A   // D = LCL - 5
 @R14    // A = R14_addr
 AM=D    // R14 = LCL-5, A = LCL-5
 D=M     // D = *(LCL-5) == ret_label
-@R13    // A = R13_addr
+@R13    // A = R13_addrf
 M=D     // R13 = ret_label
 
 // Set LCL-5-1 = stacktop == result

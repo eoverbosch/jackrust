@@ -2,29 +2,44 @@ use jackrust::parser;
 use jackrust::vm_parser;
 use code::*;
 use code::labels;
-use std::fs;
+use std::fs;  
+use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
 
 
-
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>>{
     let config = vm_parser::Config::init().unwrap_or_else(|e| e.exit());
-    let line_reader = config.make_file_reader()
-    .unwrap_or_else(|e|
-        panic!("Failed to read {} failed with error: {e}", &config.input.as_ref().unwrap().display())
-    );
+
+    // Discovery
+    let vm_files: Vec<PathBuf> = config.path
+        .read_dir()?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.extension() == Some(OsStr::new("vm")))
+        .collect();
+
+    vm_files.iter().find(
+        |file| file.file_name() == Some(OsStr::new("Sys.vm"))
+    ).ok_or("Sys.vm not found in current directory")?;
+
+    vm_files.iter().find(
+        |file| file.file_name() == Some(OsStr::new("Main.vm"))
+    ).ok_or("Main.vm not found in current directory")?;
+
 
     // Run pre-processor
     let code_lines = line_reader
         .map(Result::unwrap) 
         .map(parser::strip_comments)
         .map(|line| line.trim().to_string())
-        .filter(|line| !line.is_empty());
+        .enumerate()
+        .filter(|(_, line)| !line.is_empty());
 
     let mut output_code = String::new();
     let mut label_counter = LabelCounter::new();
     let mut function_def_tracker = FunctionDefTracker::new();
 
-    for (line_number, line) in code_lines.enumerate() {
+    for (line_number, line) in code_lines {
         let (operation_string, rhs) = line
             .split_once(char::is_whitespace)
             .unwrap_or((&line, ""));
@@ -35,7 +50,8 @@ fn main() {
 
         let operation = VMOperation::parse(operation_string)
             .unwrap_or_else(|_| panic!(
-                "Syntax error on line {line_number}: \"{line}\"\n{operation_string} is not a valid operation."
+                "Syntax error on line {}: \"{line}\"\n{operation_string} is not a valid operation.",
+                line_number + 1,
             ));
 
         match operation {
@@ -44,7 +60,7 @@ fn main() {
                 if !argument_string.is_empty() || !index_string.is_empty() {
                     panic!(
                         "Syntax error on line {}: arithmetic operation takes no arguments", 
-                        line_number
+                        line_number+1
                     )
                 }
 
@@ -70,7 +86,7 @@ fn main() {
             VMOperation::BranchOperation(branch_operation) => {
                 if !index_string.is_empty() {
                     panic!("Syntax error on line {}: branch operation takes no index arguments", 
-                        line_number)
+                        line_number+1)
                 }
 
                 let branch_label_prefix: String
@@ -91,7 +107,7 @@ fn main() {
                     FunctionOp::Return => {
                         if !argument_string.is_empty() || !index_string.is_empty() {
                             panic!("Syntax error on line {}: function operation \"return\" takes no arguments", 
-                                line_number
+                                line_number+1
                             );
                         }
 
@@ -107,7 +123,7 @@ fn main() {
                         let index = index_string.parse::<u16>().unwrap_or_else(
                             |_| panic!("Syntax error on line {}: 
                                 Index string parsing failed for function operation {:?} {}",
-                                line_number,
+                                line_number+1,
                                 function_operation,
                                 argument_string
                             )
@@ -125,9 +141,9 @@ fn main() {
 
                     FunctionOp::Call => {
                         let index = index_string.parse::<u16>().unwrap_or_else(
-                            |_| panic!("Syntax error on line {}: 
+                            |_| panic!("Syntax error on line {}: \
                                 Index string parsing failed for function operation {:?} {}",
-                                line_number,
+                                line_number+1,
                                 function_operation,
                                 argument_string
                             )
@@ -155,10 +171,17 @@ fn main() {
         output_code
     )
     .expect("Unable to write to output file");
+
+    Ok(())
+
 }
 
 
 mod code {
+    use std::{ffi::OsStr, path::PathBuf};
+    use petgraph::graph::{DiGraph, NodeIndex};
+    use petgraph::visit;
+
     #[allow(dead_code)]
     pub mod labels {
         pub fn generate_static_label(filename: &str, index: &u16) -> String {
@@ -178,11 +201,65 @@ mod code {
         }
     }
 
+    pub struct CallGraph{
+        graph: DiGraph<FunctionNode, ()>
+    }
 
-    /// FunctionDef represent a vm function definition (i.e. function function_label n_vars). 
+    pub enum FunctionNode {
+        Referenced,
+        Declared(FunctionRegistration)
+    }
+
+    pub struct FunctionRegistration {
+        file: PathBuf,
+        identifier: String,
+        line_bounds: (usize, usize),
+    }
+
+    impl FunctionRegistration {
+        pub fn from_function_label(fn_label: &str, files: Vec<PathBuf>) 
+            -> Result<FunctionRegistration, Box<dyn std::error::Error>> {
+
+            let (file_str, _) = fn_label
+                .split_once(".")
+                .ok_or_else(|| format!("Invalid fn_label formatting: {fn_label}"))?;
+
+            let fn_file = files.iter()
+                .find(|file| file.file_stem() == Some(OsStr::new(file_str)))
+                .ok_or_else(|| format!("File {file_str}.vm not found in current file context"))?;
+            
+            let file_content = std::fs::read_to_string(fn_file)?;
+            let mut enumerated_file_content = file_content
+                .lines().enumerate();
+            
+            let (line_start, _) = enumerated_file_content
+                .find( |(_, line)| {
+                    let mut args = line.split_whitespace();
+                    args.next() == Some("function") && args.next() == Some(fn_label)
+                    }
+                )
+                .ok_or_else(|| format!("function token {fn_label} not found in {file_str}.vm"))?;
+            
+            let mut last = line_start;
+
+            let line_end = enumerated_file_content
+                .find_map( |(line_number, line)| {
+                    last = line_number;
+                    (line.split_whitespace().next() == Some("function")).then_some(line_number)
+                })
+                .unwrap_or(last + 1);
+
+            Ok(FunctionRegistration {
+                file: fn_file.to_owned(),
+                identifier: fn_label.to_owned(),
+                line_bounds: (line_start, line_end)
+            })  
+        }
+    }
+
+    /// FunctionDef represent a vm function definition during translation (i.e. function function_label n_vars). 
     /// The inner fields map to function_label: String and n_vars: u16.
     #[derive(Debug)]
-
     pub struct FunctionDef(String);
 
     impl FunctionDef {
@@ -192,7 +269,6 @@ mod code {
     }
 
     #[derive(Debug)]
-
     pub struct FunctionDefTracker(Option<FunctionDef>);
 
     impl FunctionDefTracker {

@@ -31,10 +31,10 @@ pub struct Config {
     pub output: Option<PathBuf>,
 
     #[arg(skip)]
-    path: PathBuf,
+    pub path: PathBuf,
 
     #[arg(skip)]
-    mode: Mode
+    pub mode: Mode
 }
 
 impl Config {
@@ -55,7 +55,6 @@ impl Config {
 
         match &mut config.output {
             Some(output_file) => {
-                
                 match output_file.extension() {
                     None => {output_file.set_extension(ASM_FILE_EXT);},
                     Some(ext) if ext == ASM_FILE_EXT => (),

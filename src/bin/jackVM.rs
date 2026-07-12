@@ -1,5 +1,5 @@
 use jackrust::parser;
-use jackrust::vm_parser;
+use jackrust::vm_parser::{Config, CachedFile};
 use code::*;
 use code::labels;
 use std::fs;  
@@ -8,22 +8,22 @@ use std::path::{Path, PathBuf};
 
 
 fn main() -> Result<(), Box<dyn std::error::Error>>{
-    let config = vm_parser::Config::init().unwrap_or_else(|e| e.exit());
+    let config = Config::init().unwrap_or_else(|e| e.exit());
 
     // Discovery
-    let vm_files: Vec<PathBuf> = config.path
+    let vm_files: Vec<CachedFile> = config.path
         .read_dir()?
         .filter_map(Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| path.extension() == Some(OsStr::new("vm")))
+        .map(|entry| CachedFile::from_path(entry.path()))
+        .filter(|cached_file| cached_file.filepath.extension() == Some(OsStr::new("vm")))
         .collect();
 
     vm_files.iter().find(
-        |file| file.file_name() == Some(OsStr::new("Sys.vm"))
+        |file| file.filepath.file_name() == Some(OsStr::new("Sys.vm"))
     ).ok_or("Sys.vm not found in current directory")?;
 
     vm_files.iter().find(
-        |file| file.file_name() == Some(OsStr::new("Main.vm"))
+        |file| file.filepath.file_name() == Some(OsStr::new("Main.vm"))
     ).ok_or("Main.vm not found in current directory")?;
 
 
@@ -201,7 +201,7 @@ mod code {
         }
     }
 
-    pub struct CallGraph{
+    pub struct CallGraph {
         graph: DiGraph<FunctionNode, ()>
     }
 

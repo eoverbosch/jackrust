@@ -10,6 +10,32 @@ use clap::CommandFactory;
 const VM_FILE_EXT: &str = "vm";
 const ASM_FILE_EXT: &str = "asm";
 
+pub struct CachedFile {
+    pub filepath: PathBuf,
+    pub content: Option<String>
+}
+
+impl CachedFile {
+    pub fn read_from_path(path_in: impl Into<PathBuf>) -> Result<CachedFile, std::io::Error> {
+        let mut cached_file = CachedFile::from_path(path_in);
+        cached_file.read()?;
+        Ok(cached_file)
+    }
+
+    pub fn from_path(path_in: impl Into<PathBuf>) -> CachedFile {
+        CachedFile { filepath: path_in.into(), content: None }
+    }
+
+    pub fn read(&mut self) -> Result<(), std::io::Error> {
+        self.content = Some(fs::read_to_string(&self.filepath)?);
+        Ok(())
+    }
+
+    pub fn uncache(&mut self) {
+        self.content = None
+    }
+}
+
 #[derive(Default)]
 enum Mode {
     #[default]

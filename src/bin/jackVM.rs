@@ -6,7 +6,6 @@ use std::fs;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
-
 fn main() -> Result<(), Box<dyn std::error::Error>>{
     let config = Config::init().unwrap_or_else(|e| e.exit());
 
@@ -173,14 +172,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
     .expect("Unable to write to output file");
 
     Ok(())
-
 }
 
 
 mod code {
-    use std::{ffi::OsStr, path::PathBuf};
+    use std::fmt::Error;
+use std::{ffi::OsStr, path::PathBuf};
+    use jackrust::vm_parser::{CachedFile};
     use petgraph::graph::{DiGraph, NodeIndex};
     use petgraph::visit;
+    use std::collections::HashMap;
+
+use crate::code::FunctionNode::Called;
 
     #[allow(dead_code)]
     pub mod labels {
@@ -201,17 +204,183 @@ mod code {
         }
     }
 
-    pub struct CallGraph {
-        graph: DiGraph<FunctionNode, ()>
-    }
-
     pub enum FunctionNode {
-        Referenced,
-        Declared(FunctionRegistration)
+        Called(String),
+        Defined(FunctionRegistration)
     }
 
+    pub struct CallGraph {
+        graph: DiGraph<FunctionNode, ()>,
+        nodes: HashMap<String, NodeIndex>
+    }
+
+    #[derive(Debug)]
+    pub struct PlaceholderError;
+
+    impl std::fmt::Display for PlaceholderError {
+        fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            write!(f, "placeholder error")
+        }
+    }
+
+    impl std::error::Error for PlaceholderError {}
+
+    impl CallGraph {
+        pub fn new() -> CallGraph {
+            CallGraph {
+                graph: DiGraph::new(), 
+                nodes: HashMap::new()
+            }
+        }
+
+        pub fn get(&self, key: &str) -> Option<&FunctionNode>{
+            self.nodes.get(key).and_then(|&i| self.graph.node_weight(i))
+        }
+
+        pub fn add_node(&mut self, node_weight: FunctionNode) -> Option<NodeIndex> {
+            let node_key = match &node_weight {
+                FunctionNode::Called(identifier) => identifier.clone(),
+                FunctionNode::Defined(function_reg) => function_reg.identifier.clone()
+            };
+
+            if !self.nodes.contains_key(&node_key) {
+
+                let node_index = self.graph.add_node(node_weight);
+                self.nodes.insert(node_key.to_owned(), node_index);
+
+                Some(node_index)
+
+            } else {
+                None
+            }
+        }
+
+        fn add_defined(&mut self, function_reg: FunctionRegistration) -> NodeIndex {
+            let Some(idx) = self.nodes.get(&function_reg.identifier) else {
+                let idx = self.graph.add_node(FunctionNode::Defined(function_reg.clone()));
+                self.nodes.insert(function_reg.identifier.to_owned(), idx);
+                return idx
+            };
+
+            idx.to_owned()
+        }
+
+        pub fn add_called(&mut self, identifier: &str) -> NodeIndex {
+            let Some(idx) = self.nodes.get(identifier) else {
+                let idx = self.graph.add_node(FunctionNode::Called(identifier.to_string()));
+                self.nodes.insert(identifier.to_owned(), idx);
+                return idx
+            };
+
+            idx.to_owned()
+        }
+
+        fn upgrade_node(&mut self, function_reg: FunctionRegistration) -> Result<NodeIndex,Box<dyn std::error::Error>> {
+            match self.get(&function_reg.identifier).unwrap() {
+                FunctionNode::Defined(_) => Err(Box::new(PlaceholderError)),
+                FunctionNode::Called(identifier) => {
+                    let idx = self.nodes.get(identifier).unwrap().to_owned();
+                    self.graph[idx] = FunctionNode::Defined(function_reg);
+                    Ok(idx)
+                }
+            }
+        }
+
+        /// Either adds a non-existing node based on identifier, or upgrades a function call (Called)
+        /// to a function definition (Defined). Errors when caller tries to upgrade an already existing Defined node
+        pub fn try_add_or_upgrade(&mut self, function_reg: FunctionRegistration) -> Result<NodeIndex,Box<dyn std::error::Error>> {
+            match self.get(&function_reg.identifier) {
+                Some(FunctionNode::Defined(_)) => return Err(Box::new(PlaceholderError)),
+                Some(FunctionNode::Called(_)) => self.upgrade_node(function_reg),
+                None => Ok(self.add_defined(function_reg))
+            }
+        }
+
+        pub fn from_entrypoint(entrypoint_label: String, files: &mut Vec<CachedFile>)
+            -> Result<(), Box<dyn std::error::Error>> {
+
+            let mut active_function_index: Option<NodeIndex> = None;
+            let mut callgraph = CallGraph::new();
+            let mut worklist: Vec<&CachedFile> = Vec::new();
+
+            let (entrypoint_filename, _) = entrypoint_label.split_once(".")
+                .ok_or(PlaceholderError)?;
+
+            let entrypoint_file = files.iter()
+                .find(|file| file.filepath.file_stem() == Some(OsStr::new(entrypoint_filename)))
+                .ok_or(PlaceholderError)?;
+
+            worklist.push(entrypoint_file);
+
+            while let Some(vm_file) = worklist.pop() {
+                // If file has been opened already, continue
+                if let Some(_) = vm_file.content {continue}
+
+                // If not, scan file 
+                vm_file.read()?;
+                
+                let vm_file_length = vm_file.content.iter().len();
+                let mut vm_file_lines = vm_file.content.unwrap().lines().enumerate();
+
+                while let Some((line_number, line)) = vm_file_lines.next() {
+                    let mut line_arguments = line.split_whitespace();
+
+                    match line_arguments.next() {
+                        Some("function") => {
+                            // Store final version of current active function in callgraph
+                            if let Some(fn_index) = active_function_index {
+                                // Access active function in callgraph
+                                let FunctionNode::Defined(mut active_function) 
+                                    = callgraph.graph.node_weight_mut(fn_index).unwrap() 
+                                        else {unreachable!()}; // active_function_index is by default Defined
+
+                                // Replace line end
+                                active_function.line_bounds.1 = line_number - 1;
+                                
+                            }
+
+                            // Make new function registration with default line_end = eof
+                            let function_label = line_arguments.next().unwrap();
+
+                            let function_reg = FunctionRegistration {
+                                identifier: function_label.to_owned(),
+                                line_bounds: (line_number, vm_file_length)
+                            };
+                            
+                            // If identifier doesn't exist in callgraph or is Called, insert
+                            // new function registration as Defined. If exists but is defined, error
+                            let new_index = callgraph.try_add_or_upgrade(function_reg)?;
+
+                            // Set active function to NodeIndex
+                            active_function_index = Some(new_index);
+
+                        },
+
+                        Some("call") => {
+                            // If identifier doesn't exist in callgraph: add as Called
+                            let function_label = line_arguments.next().unwrap();
+
+                            let node_index = callgraph.add_called(function_label);
+
+                            // If active function is not None:
+                            // Add edge to graph from active function to called function
+                            if let Some(idx) = active_function_index {
+                                callgraph.graph.add_edge(idx, node_index, ());
+                            }
+                        },
+
+                        _ => continue
+                    }
+                }
+            }
+
+            Ok(())
+        }
+
+    }
+
+    #[derive(Clone)]
     pub struct FunctionRegistration {
-        file: PathBuf,
         identifier: String,
         line_bounds: (usize, usize),
     }
@@ -250,7 +419,6 @@ mod code {
                 .unwrap_or(last + 1);
 
             Ok(FunctionRegistration {
-                file: fn_file.to_owned(),
                 identifier: fn_label.to_owned(),
                 line_bounds: (line_start, line_end)
             })  

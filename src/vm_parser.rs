@@ -9,6 +9,7 @@ use clap::CommandFactory;
 
 const VM_FILE_EXT: &str = "vm";
 const ASM_FILE_EXT: &str = "asm";
+pub const ENTRYPOINT: &str = "Sys.init";
 
 pub struct CachedFile {
     pub filepath: PathBuf,
@@ -60,7 +61,7 @@ pub struct Config {
     pub path: PathBuf,
 
     #[arg(skip)]
-    pub mode: Mode
+    pub mode: Mode,
 }
 
 impl Config {

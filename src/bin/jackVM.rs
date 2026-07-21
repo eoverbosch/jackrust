@@ -1,16 +1,18 @@
-use jackrust::parser;
+use jackrust::{parser, vm_parser};
 use jackrust::vm_parser::{Config, CachedFile};
 use code::*;
 use code::labels;
 use std::fs;  
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
+use std::fmt::Write;
+
 
 fn main() -> Result<(), Box<dyn std::error::Error>>{
     let config = Config::init().unwrap_or_else(|e| e.exit());
 
     // Discovery
-    let vm_files: Vec<CachedFile> = config.path
+    let mut vm_files: Vec<CachedFile> = config.path
         .read_dir()?
         .filter_map(Result::ok)
         .map(|entry| CachedFile::from_path(entry.path()))
@@ -25,11 +27,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
         |file| file.filepath.file_name() == Some(OsStr::new("Main.vm"))
     ).ok_or("Main.vm not found in current directory")?;
 
+    let callgraph = CallGraph::from_entrypoint(vm_parser::ENTRYPOINT.to_owned(), &mut vm_files)?;
+    let line_reader = callgraph.build_function_reader(vm_parser::ENTRYPOINT, &vm_files)?;
+
+    const BOOTSTRAP_CODE: &[&str] = &[
+        "INIT SP 256",
+        "call Sys.init 0"
+    ];
 
     // Run pre-processor
-    let code_lines = line_reader
-        .map(Result::unwrap) 
-        .map(parser::strip_comments)
+    let code_lines = BOOTSTRAP_CODE.iter().copied()
+        .chain(line_reader.into_iter().flatten())
+        .map(parser::strip_comments_str)
         .map(|line| line.trim().to_string())
         .enumerate()
         .filter(|(_, line)| !line.is_empty());
@@ -54,6 +63,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
             ));
 
         match operation {
+            VMOperation::Initialisation(init_operation) => {
+                let address_pointer = AddressPointer::parse(argument_string)
+                    .expect("Invalid address pointer label in INIT call");
+
+                let index: u16 = index_string.parse()
+                    .expect("Invalid value in INIT call");
+
+                init_operation.emit_asm(&mut output_code, address_pointer, index);
+            }
+
             VMOperation::Arithmetic(arithmetic_operation) => {
 
                 if !argument_string.is_empty() || !index_string.is_empty() {
@@ -177,10 +196,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 
 mod code {
     use std::fmt::Error;
+use std::str::Lines;
 use std::{ffi::OsStr, path::PathBuf};
     use jackrust::vm_parser::{CachedFile};
     use petgraph::graph::{DiGraph, NodeIndex};
-    use petgraph::visit;
+    use petgraph::visit::Dfs;
     use std::collections::HashMap;
 
 use crate::code::FunctionNode::Called;
@@ -296,47 +316,89 @@ use crate::code::FunctionNode::Called;
             }
         }
 
-        pub fn from_entrypoint(entrypoint_label: String, files: &mut Vec<CachedFile>)
-            -> Result<(), Box<dyn std::error::Error>> {
+        pub fn build_function_reader<'a>(
+            &self,
+            entrypoint_label: &str,
+            files: &'a [CachedFile],
+        ) -> Result<Vec<std::iter::Take<std::iter::Skip<std::str::Lines<'a>>>>, Box<dyn std::error::Error>> {
 
-            let mut active_function_index: Option<NodeIndex> = None;
+            let entrypoint_index = self.nodes.get(entrypoint_label)
+                .ok_or(PlaceholderError)?;
+
+            let mut readers = Vec::new();
+            let mut dfs = petgraph::visit::Dfs::new(&self.graph, *entrypoint_index);
+
+            while let Some(node_index) = dfs.next(&self.graph) {
+                // Every reachable node must be Defined at this point
+                let FunctionNode::Defined(function_reg) = &self.graph[node_index]
+                    else { return Err(Box::new(PlaceholderError)) };
+
+                // Resolve file from identifier prefix
+                let (file_label, _) = function_reg.identifier.split_once(".")
+                    .ok_or(PlaceholderError)?;
+
+                let file = files.iter()
+                    .find(|file| file.filepath.file_stem() == Some(OsStr::new(file_label)))
+                    .ok_or(PlaceholderError)?;
+
+                // File must already be cached; error otherwise
+                let content = file.content.as_ref()
+                    .ok_or(PlaceholderError)?;
+
+                // line_bounds inclusive on both ends
+                let (start, end) = function_reg.line_bounds;
+                let reader = content.lines().skip(start).take(end - start + 1);
+
+                readers.push(reader);
+            }
+
+            Ok(readers)
+        }
+
+        pub fn from_entrypoint(entrypoint_label: String, files: &mut Vec<CachedFile>)
+            -> Result<CallGraph, Box<dyn std::error::Error>> {
+
             let mut callgraph = CallGraph::new();
-            let mut worklist: Vec<&CachedFile> = Vec::new();
+            let mut worklist: Vec<usize> = Vec::new(); // usize is an index into files
 
             let (entrypoint_filename, _) = entrypoint_label.split_once(".")
                 .ok_or(PlaceholderError)?;
 
-            let entrypoint_file = files.iter()
-                .find(|file| file.filepath.file_stem() == Some(OsStr::new(entrypoint_filename)))
+            let entrypoint_file_index = files.iter()
+                .position(|file| file.filepath.file_stem() == Some(OsStr::new(entrypoint_filename)))
                 .ok_or(PlaceholderError)?;
 
-            worklist.push(entrypoint_file);
+            worklist.push(entrypoint_file_index);
 
-            while let Some(vm_file) = worklist.pop() {
+            while let Some(vm_file_index) = worklist.pop() {
+                let mut active_function_index: Option<NodeIndex> = None;
+
+                let vm_file = &mut files[vm_file_index];
+
                 // If file has been opened already, continue
                 if let Some(_) = vm_file.content {continue}
 
                 // If not, scan file 
                 vm_file.read()?;
                 
-                let vm_file_length = vm_file.content.iter().len();
-                let mut vm_file_lines = vm_file.content.unwrap().lines().enumerate();
+                let content = files[vm_file_index].content.as_ref().unwrap();
+                let vm_file_length = content.lines().count();
 
-                while let Some((line_number, line)) = vm_file_lines.next() {
+                for (line_number, line) in content.lines().enumerate() {
                     let mut line_arguments = line.split_whitespace();
 
                     match line_arguments.next() {
                         Some("function") => {
                             // Store final version of current active function in callgraph
                             if let Some(fn_index) = active_function_index {
+
                                 // Access active function in callgraph
-                                let FunctionNode::Defined(mut active_function) 
+                                let FunctionNode::Defined(active_function) 
                                     = callgraph.graph.node_weight_mut(fn_index).unwrap() 
-                                        else {unreachable!()}; // active_function_index is by default Defined
+                                        else {panic!("Impossible state reached")}; // active_function_index is by default Defined
 
                                 // Replace line end
                                 active_function.line_bounds.1 = line_number - 1;
-                                
                             }
 
                             // Make new function registration with default line_end = eof
@@ -344,7 +406,7 @@ use crate::code::FunctionNode::Called;
 
                             let function_reg = FunctionRegistration {
                                 identifier: function_label.to_owned(),
-                                line_bounds: (line_number, vm_file_length)
+                                line_bounds: (line_number, vm_file_length - 1)
                             };
                             
                             // If identifier doesn't exist in callgraph or is Called, insert
@@ -353,7 +415,6 @@ use crate::code::FunctionNode::Called;
 
                             // Set active function to NodeIndex
                             active_function_index = Some(new_index);
-
                         },
 
                         Some("call") => {
@@ -367,16 +428,24 @@ use crate::code::FunctionNode::Called;
                             if let Some(idx) = active_function_index {
                                 callgraph.graph.add_edge(idx, node_index, ());
                             }
+
+                            // Find file relating to function in files and add to worklist
+                            let Some((file_label, _)) = function_label.split_once(".") 
+                                else {return Err(Box::new(PlaceholderError))};
+
+                            let file_index = files.iter()
+                                .position(|file| file.filepath.file_stem() == Some(OsStr::new(file_label)))
+                                .ok_or(PlaceholderError)?;
+                            
+                            worklist.push(file_index)
                         },
 
                         _ => continue
                     }
                 }
             }
-
-            Ok(())
+            Ok(callgraph)
         }
-
     }
 
     #[derive(Clone)]
@@ -486,17 +555,16 @@ use crate::code::FunctionNode::Called;
     impl Segment {
         pub fn parse(segment_string: &str)
         -> Result<Segment, InvalidSegmentError> {
-            use Segment::*;
 
             let segment: Segment = match segment_string {
-                "constant" => Constant,
-                "local"    => Local,
-                "argument" => Argument,
-                "static"   => Static,
-                "this"     => This,
-                "that"     => That,
-                "temp"     => Temp,
-                "pointer"  => Pointer,
+                "constant" => Segment::Constant,
+                "local"    => Segment::Local,
+                "argument" => Segment::Argument,
+                "static"   => Segment::Static,
+                "this"     => Segment::This,
+                "that"     => Segment::That,
+                "temp"     => Segment::Temp,
+                "pointer"  => Segment::Pointer,
 
                 _ => return Err(InvalidSegmentError)
             };
@@ -533,6 +601,7 @@ use crate::code::FunctionNode::Called;
     pub struct InvalidKeywordError;
 
     pub enum VMOperation {
+        Initialisation(InitOp),
         Arithmetic(ArithmeticOp),
         Compare(CompareOp),
         StackOperation(StackOp),
@@ -547,6 +616,8 @@ use crate::code::FunctionNode::Called;
             use VMOperation::*;
 
             let operation = match operation_string {
+                "INIT" => Initialisation(InitOp),
+
                 "add"  => Arithmetic(ArithmeticOp::Add),
                 "sub"  => Arithmetic(ArithmeticOp::Subtract),
                 "neg"  => Arithmetic(ArithmeticOp::Negate),
@@ -573,6 +644,57 @@ use crate::code::FunctionNode::Called;
             };
 
             Ok(operation)
+        }
+    }
+
+    pub struct InitOp;
+
+    impl InitOp {
+        pub fn emit_asm(&self, target: &mut String, address_pointer: AddressPointer, value: u16) {
+            use std::fmt::Write;
+
+            writeln!(target, "@{}\n\
+                D=A\n\
+                @{}\n\
+                M=D",
+                value,
+                address_pointer.get_label()
+            )
+            .expect("Failed to write to target in InitOp::emit_asm")
+        }
+    }
+
+    pub enum AddressPointer {
+        StackPointer,
+        Local,
+        Argument,
+        This,
+        That
+    }
+
+    impl AddressPointer {
+        pub fn parse(address_string: &str)
+        -> Result<AddressPointer, InvalidKeywordError> {
+            let address = match address_string {
+                "SP"   => AddressPointer::StackPointer,
+                "LCL"  => AddressPointer::Local,
+                "ARG"  => AddressPointer::Argument,
+                "THIS" => AddressPointer::This,
+                "THAT" => AddressPointer::That,
+                _ => return Err(InvalidKeywordError)
+            };
+
+            Ok(address)
+        }
+
+        pub fn get_label(&self) -> String {
+            match self {
+                AddressPointer::StackPointer => "SP".to_owned(),
+                AddressPointer::Local        => "LCL".to_owned(),
+                AddressPointer::Argument     => "ARG".to_owned(),
+                AddressPointer::This         => "THIS".to_owned(),
+                AddressPointer::That         => "THAT".to_owned(),
+            }
         }
     }
 
@@ -633,8 +755,8 @@ use crate::code::FunctionNode::Called;
 
     impl CompareOp {
         pub fn emit_asm(&self, target: &mut String, label: String) {
-
             use std::fmt::Write;
+
             writeln!(target, "@SP\n\
                 AM=M-1\n\
                 D=M\n\
@@ -652,7 +774,6 @@ use crate::code::FunctionNode::Called;
                 label
             )
             .expect("Failed to write to target in CompareOp::emit_asm")
-
         }
 
         fn insert_operation(&self) -> &str {

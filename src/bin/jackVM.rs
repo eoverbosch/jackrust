@@ -86,19 +86,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
             },
 
             VMOperation::Compare(compare_operation) => {
+                let label = function_def_tracker
+                    .get_current_label()
+                    .unwrap_or(config.get_input_name().to_owned());
+
                 compare_operation.emit_asm(
                     &mut output_code,
-                    labels::generate_compare_label(config.get_input_name(), label_counter.get())
+                    labels::generate_compare_label(&label, label_counter.get())
                 )
             },
 
             VMOperation::StackOperation(stack_operation) => {
-                let segment: Segment 
-                    = Segment::parse(argument_string).unwrap();
-
+                let segment: Segment = Segment::parse(argument_string).unwrap();
                 let index = index_string.parse::<u16>().unwrap();
 
-                stack_operation.emit_asm(&mut output_code, segment, index, config.get_input_name())
+                let static_prefix = function_def_tracker
+                    .get_current_label()
+                    .and_then(|label| label.split_once('.').map(|(file, _)| file.to_owned()))
+                    .expect("stack operation outside function body");
+
+                stack_operation.emit_asm(&mut output_code, segment, index, &static_prefix)
             }
 
             VMOperation::BranchOperation(branch_operation) => {
@@ -107,8 +114,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
                         line_number+1)
                 }
 
-                let branch_label_prefix: String
-                    = function_def_tracker
+                let branch_label_prefix: String = function_def_tracker
                     .get_current_label()
                     .unwrap_or(config.get_input_name().to_owned());
 
@@ -582,7 +588,7 @@ use crate::code::FunctionNode::Called;
                 That => "THAT".to_owned(),
                 Static => labels::generate_static_label(filename, index),
                 Temp => {
-                    if index > &8 {panic!("Temp index is outside segment bounds")}
+                    if index > &7 {panic!("Temp index is outside segment bounds")}
                     (5 + index).to_string().to_owned()
                 }, 
                 Pointer => {

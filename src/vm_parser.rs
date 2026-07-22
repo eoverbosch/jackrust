@@ -38,7 +38,7 @@ impl CachedFile {
 }
 
 #[derive(Default)]
-enum Mode {
+pub enum Mode {
     #[default]
     None, 
     SingleFile,
@@ -77,7 +77,15 @@ impl Config {
 
         config.mode = match config.input {
             Some(_) => Mode::SingleFile,
-            None => Mode::Directory
+            None => {
+                // file_name returns the directory name here
+                let dir_name = config.path
+                    .file_name()
+                    .unwrap_or(std::ffi::OsStr::new("a"));
+
+                config.input = Some(PathBuf::from(dir_name));
+                Mode::Directory
+            }
         };
 
         match &mut config.output {

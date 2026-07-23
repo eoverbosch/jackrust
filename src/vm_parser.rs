@@ -57,6 +57,9 @@ pub struct Config {
     #[arg(short, long)]
     pub output: Option<PathBuf>,
 
+    #[arg(short, long)]
+    pub dump: bool,
+
     #[arg(skip)]
     pub path: PathBuf,
 

@@ -29,19 +29,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 
     let callgraph = CallGraph::from_entrypoint(vm_parser::ENTRYPOINT.to_owned(), &mut vm_files)?;
     let line_reader = callgraph.build_function_reader(vm_parser::ENTRYPOINT, &vm_files)?;
-
+    
+    
     const BOOTSTRAP_CODE: &[&str] = &[
         "INIT SP 256",
         "call Sys.init 0"
-    ];
-
-    // Run pre-processor
-    let code_lines = BOOTSTRAP_CODE.iter().copied()
+        ];
+        
+        // Run pre-processor
+        let code_lines = BOOTSTRAP_CODE.iter().copied()
         .chain(line_reader.into_iter().flatten())
         .map(parser::strip_comments_str)
         .map(|line| line.trim().to_string())
         .enumerate()
         .filter(|(_, line)| !line.is_empty());
+    
+    if config.dump {
+        fs::write(
+            config.output
+                .clone()
+                .expect("Unable to clone config.output for debug")
+                .with_extension("vm"),
+            code_lines
+                .clone()
+                .map(|(_, line)| line)
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
+        .expect("Unable to write debug dump");
+    }
 
     let mut output_code = String::new();
     let mut label_counter = LabelCounter::new();
@@ -245,7 +261,8 @@ use crate::code::FunctionNode::Called;
 
     impl std::fmt::Display for PlaceholderError {
         fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-            write!(f, "placeholder error")
+            write!(f, "placeholder error");
+            Ok(())
         }
     }
 
@@ -401,7 +418,7 @@ use crate::code::FunctionNode::Called;
                                 // Access active function in callgraph
                                 let FunctionNode::Defined(active_function) 
                                     = callgraph.graph.node_weight_mut(fn_index).unwrap() 
-                                        else {panic!("Impossible state reached")}; // active_function_index is by default Defined
+                                        else {unreachable!()}; // active_function_index is by default Defined
 
                                 // Replace line end
                                 active_function.line_bounds.1 = line_number - 1;

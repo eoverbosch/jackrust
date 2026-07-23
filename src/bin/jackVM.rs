@@ -30,19 +30,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
     let callgraph = CallGraph::from_entrypoint(vm_parser::ENTRYPOINT.to_owned(), &mut vm_files)?;
     let line_reader = callgraph.build_function_reader(vm_parser::ENTRYPOINT, &vm_files)?;
     
-    
     const BOOTSTRAP_CODE: &[&str] = &[
         "INIT SP 256",
         "call Sys.init 0"
-        ];
+    ];
         
-        // Run pre-processor
-        let code_lines = BOOTSTRAP_CODE.iter().copied()
-        .chain(line_reader.into_iter().flatten())
-        .map(parser::strip_comments_str)
-        .map(|line| line.trim().to_string())
-        .enumerate()
-        .filter(|(_, line)| !line.is_empty());
+    // Run pre-processor
+    let code_lines = BOOTSTRAP_CODE.iter().copied()
+    .chain(line_reader.into_iter().flatten())
+    .map(parser::strip_comments_str)
+    .map(|line| line.trim().to_string())
+    .enumerate()
+    .filter(|(_, line)| !line.is_empty());
     
     if config.dump {
         fs::write(
@@ -218,16 +217,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
 
 mod code {
     use std::fmt::Error;
-use std::str::Lines;
-use std::{ffi::OsStr, path::PathBuf};
+    use std::str::Lines;
+    use std::{ffi::OsStr, path::PathBuf};
     use jackrust::vm_parser::{CachedFile};
     use petgraph::graph::{DiGraph, NodeIndex};
     use petgraph::visit::Dfs;
     use std::collections::HashMap;
 
-use crate::code::FunctionNode::Called;
-
-    #[allow(dead_code)]
     pub mod labels {
         pub fn generate_static_label(filename: &str, index: &u16) -> String {
             filename.to_owned() + "." + &index.to_string()

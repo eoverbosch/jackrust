@@ -1,41 +1,16 @@
 use std::fs;
-use std::env;
 use std::io::{self, BufRead};
-use std::path::{Path, PathBuf};
+use std::path::{PathBuf, Path};
 
-use clap::Parser;
 use clap::builder::OsStr;
 use clap::CommandFactory;
+use clap::Parser;
+
 
 const VM_FILE_EXT: &str = "vm";
 const ASM_FILE_EXT: &str = "asm";
 pub const ENTRYPOINT: &str = "Sys.init";
 
-pub struct CachedFile {
-    pub filepath: PathBuf,
-    pub content: Option<String>
-}
-
-impl CachedFile {
-    pub fn read_from_path(path_in: impl Into<PathBuf>) -> Result<CachedFile, std::io::Error> {
-        let mut cached_file = CachedFile::from_path(path_in);
-        cached_file.read()?;
-        Ok(cached_file)
-    }
-
-    pub fn from_path(path_in: impl Into<PathBuf>) -> CachedFile {
-        CachedFile { filepath: path_in.into(), content: None }
-    }
-
-    pub fn read(&mut self) -> Result<(), std::io::Error> {
-        self.content = Some(fs::read_to_string(&self.filepath)?);
-        Ok(())
-    }
-
-    pub fn uncache(&mut self) {
-        self.content = None
-    }
-}
 
 #[derive(Default)]
 pub enum Mode {
@@ -72,7 +47,7 @@ impl Config {
         let mut config = Config::try_parse()?;
         let mut cmd = Config::command();
 
-        config.path = env::current_dir()
+        config.path = std::env::current_dir()
             .map_err(|e| cmd.error(
                 clap::error::ErrorKind::Io,
                 format!("failed to fetch current path: {e}"),
@@ -137,8 +112,6 @@ impl Config {
         let file = fs::File::open(&self.input.clone().unwrap())?;
         Ok(io::BufReader::new(file).lines())
     }
-
-    pub fn get_full_filename() -> () {}
 
     pub fn get_input_name(&self) -> &str {
         self.input.as_ref().unwrap()

@@ -83,11 +83,3 @@ pub fn strip_comments(line: String) -> String {
     .unwrap()
     .to_string()
 }
-
-pub fn strip_comments_str(line: &str) -> String {
-    line
-    .splitn(2, "//")
-    .next()
-    .unwrap()
-    .to_string()
-}

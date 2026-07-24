@@ -255,3 +255,10 @@ M=D     // ARG = THAT_stored
 @R13    // A = R13_addr
 A=M     // A = *R13_addr = R13 == ret_label
 0;JMP   // Jump to A
+
+///// INIT:
+
+@const // A = const
+D=A    // D = A == const
+@PTR   // A = PTR_addr
+M=D    // *PTR_addr == PTR = const

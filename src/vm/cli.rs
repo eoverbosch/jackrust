@@ -1,43 +1,19 @@
 use std::fs;
-use std::env;
 use std::io::{self, BufRead};
-use std::path::{Path, PathBuf};
+use std::path::{PathBuf, Path};
 
-use clap::Parser;
 use clap::builder::OsStr;
 use clap::CommandFactory;
+use clap::Parser;
+
 
 const VM_FILE_EXT: &str = "vm";
 const ASM_FILE_EXT: &str = "asm";
+pub const ENTRYPOINT: &str = "Sys.init";
 
-pub struct CachedFile {
-    pub filepath: PathBuf,
-    pub content: Option<String>
-}
-
-impl CachedFile {
-    pub fn read_from_path(path_in: impl Into<PathBuf>) -> Result<CachedFile, std::io::Error> {
-        let mut cached_file = CachedFile::from_path(path_in);
-        cached_file.read()?;
-        Ok(cached_file)
-    }
-
-    pub fn from_path(path_in: impl Into<PathBuf>) -> CachedFile {
-        CachedFile { filepath: path_in.into(), content: None }
-    }
-
-    pub fn read(&mut self) -> Result<(), std::io::Error> {
-        self.content = Some(fs::read_to_string(&self.filepath)?);
-        Ok(())
-    }
-
-    pub fn uncache(&mut self) {
-        self.content = None
-    }
-}
 
 #[derive(Default)]
-enum Mode {
+pub enum Mode {
     #[default]
     None, 
     SingleFile,
@@ -56,11 +32,14 @@ pub struct Config {
     #[arg(short, long)]
     pub output: Option<PathBuf>,
 
+    #[arg(short, long)]
+    pub dump: bool,
+
     #[arg(skip)]
     pub path: PathBuf,
 
     #[arg(skip)]
-    pub mode: Mode
+    pub mode: Mode,
 }
 
 impl Config {
@@ -68,7 +47,7 @@ impl Config {
         let mut config = Config::try_parse()?;
         let mut cmd = Config::command();
 
-        config.path = env::current_dir()
+        config.path = std::env::current_dir()
             .map_err(|e| cmd.error(
                 clap::error::ErrorKind::Io,
                 format!("failed to fetch current path: {e}"),
@@ -76,7 +55,15 @@ impl Config {
 
         config.mode = match config.input {
             Some(_) => Mode::SingleFile,
-            None => Mode::Directory
+            None => {
+                // file_name returns the directory name here
+                let dir_name = config.path
+                    .file_name()
+                    .unwrap_or(std::ffi::OsStr::new("a"));
+
+                config.input = Some(PathBuf::from(dir_name));
+                Mode::Directory
+            }
         };
 
         match &mut config.output {
@@ -125,8 +112,6 @@ impl Config {
         let file = fs::File::open(&self.input.clone().unwrap())?;
         Ok(io::BufReader::new(file).lines())
     }
-
-    pub fn get_full_filename() -> () {}
 
     pub fn get_input_name(&self) -> &str {
         self.input.as_ref().unwrap()

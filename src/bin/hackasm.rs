@@ -118,7 +118,7 @@ mod hack_assembler {
             format!("{:016b}", instruction_as_integer) // Format as binary and return
         }
 
-        pub fn c_instruction(line: &str) -> String{
+        pub fn c_instruction(line: &str) -> String {
             //Split 3 blocks by = and ;, set b[0..2] = 111
             //match first block: has A, has M, has D. If no =, 000
             //match second block: match to instruction table
@@ -139,7 +139,6 @@ mod hack_assembler {
                 + jump(&jump_instruction);
 
             format!("{:016b}", instruction_as_integer) // Format as binary and return
-         
         }
         
         pub fn dest(code_string: &str) -> u16 {

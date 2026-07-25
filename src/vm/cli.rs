@@ -32,6 +32,7 @@ pub struct Config {
     #[arg(short, long)]
     pub output: Option<PathBuf>,
 
+    /// Optional flag that dumps intermediate results
     #[arg(short, long)]
     pub dump: bool,
 
@@ -98,7 +99,9 @@ impl Config {
         match input_file.extension() {
             None => {input_file.set_extension(VM_FILE_EXT);},
             Some(ext) if ext == VM_FILE_EXT => (),
-            Some(_) => return Err(format!("Specified input file \"{}\" is not of type .{}", s, VM_FILE_EXT))
+            Some(_) => return Err(format!(
+                "Specified input file \"{}\" is not of type .{}", s, VM_FILE_EXT)
+            )
         };
 
         if !input_file.exists() {

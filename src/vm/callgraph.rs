@@ -19,7 +19,7 @@ pub struct PlaceholderError;
 
 impl std::fmt::Display for PlaceholderError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "placeholder error");
+        write!(f, "placeholder error").unwrap();
         Ok(())
     }
 }

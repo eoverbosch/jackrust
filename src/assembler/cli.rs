@@ -10,8 +10,8 @@ use crate::ASM_FILE_EXT;
 use crate::HACK_FILE_EXT;
 
 #[derive(Parser)]
-/// Hack assembler for the NAND2Tetris Hack platform. Translates hack virtual machine code to 
-/// hack assembly.
+/// Hack assembler for the NAND2Tetris Hack platform. Assembles hack assembly code into binary,
+/// using a simple command line tool. 
 pub struct Config {
     /// The path to a hack assembly input file. 
     #[arg(value_parser = Config::parse_input_file)]

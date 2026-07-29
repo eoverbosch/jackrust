@@ -8,7 +8,7 @@ use std::fs;
 fn main() {
     let config = cli::Config::init().unwrap_or_else(|e| e.exit());
 
-    // FIRST PASS: String preprocessing
+    // FIRST PASS: String collection and code preprocessing
     let mut symbol_table = SymbolTable::build_default();
 
     let mut processed_lines: String = String::new();
@@ -47,12 +47,10 @@ fn main() {
         }
     }
 
-    // SECOND PASS
+    // SECOND PASS: code assembly
     let mut final_lines: String = String::new();
     
-    for line_str in processed_lines.lines() {
-        let line = line_str;
-
+    for line in processed_lines.lines() {
         let instruction_string = match line.strip_prefix("@") {
             Some(stripped_line) => codegen::a_instruction(stripped_line, &mut symbol_table),
             None                => codegen::c_instruction(line)

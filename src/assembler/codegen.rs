@@ -17,24 +17,29 @@ pub fn a_instruction(instruction: &str, symbol_table: &mut SymbolTable) -> Strin
     out
 }
 
+/// Splits 3 blocks by = and ; according to the format dest=comp;jump e.g. AM=M-D;JGT.
+/// Parses each block accordingly and converts to binary number.
+/// Each block represents a different slice of bits of the binary instruction, so we can just add
+/// as numbers to binary number b to concatenate. Parse as binary string afterwards
+/// 
+/// 111 (convention) maps to b[0..2]: constant for C-instructions.
+/// jump instruction maps to b[2..9]
+/// oper instruction maps to b[10..12]
+/// dest instruction maps to b[13..15]
 pub fn c_instruction(line: &str) -> String {
-    //Split 3 blocks by = and ;, set b[0..2] = 111
-    //match first block: has A, has M, has D. If no =, 000
-    //match second block: match to instruction table
-    //match third block: match to jump table
 
     let (dest_instruction, rhs) = line
         .split_once("=")
         .unwrap_or(("", line));
 
-    let (comp_instruction, jump_instruction) = rhs
+    let (oper_instruction, jump_instruction) = rhs
         .split_once(";")
         .unwrap_or((rhs,""));
 
     let instruction_as_integer: u16
         = (0b1110_0000_0000_0000 as u16)
         + dest(&dest_instruction)
-        + comp(&comp_instruction)
+        + oper(&oper_instruction)
         + jump(&jump_instruction);
 
     let out = format!("{:016b}", instruction_as_integer); // Format as binary and return
@@ -70,7 +75,7 @@ fn jump(code_string: &str) -> u16 {
     }
 }
 
-fn comp(code_string: &str) -> u16 {
+fn oper(code_string: &str) -> u16 {
     match code_string {
         // a = 0
         "0"   => 0b0000_101010_000000,
@@ -110,108 +115,106 @@ fn comp(code_string: &str) -> u16 {
 
 
 pub struct SymbolTable {
-pub inner: HashMap<String, u16>,
-next_allocable_address: u16,
+    pub inner: HashMap<String, u16>,
+    next_allocable_address: u16,
 }
 
 impl SymbolTable {
-#[allow(dead_code)]
-pub fn new() -> SymbolTable {
-    let new_hashmap: HashMap<String, u16> = HashMap::new();
+    pub fn new() -> SymbolTable {
+        let new_hashmap: HashMap<String, u16> = HashMap::new();
 
-    SymbolTable {
-        inner: new_hashmap,
-        next_allocable_address: 0,
-    }
-}
-
-pub fn build_default() -> SymbolTable {
-    /*
-    Implements addresses for default parameters:
-    R0-16: 0-16
-    SP:    0
-    LCL:   1
-    ARG:   2
-    THIS:  3
-    THAT:  4
-    SCREEN: 16384
-    KBD: 24576
-        */
-
-    let mut symbol_map: HashMap<String, u16> = HashMap::new();
-
-    symbol_map.insert("R0".to_string(),   0);
-    symbol_map.insert("R1".to_string(),   1);
-    symbol_map.insert("R2".to_string(),   2);
-    symbol_map.insert("R3".to_string(),   3);
-    symbol_map.insert("R4".to_string(),   4);
-    symbol_map.insert("R5".to_string(),   5);
-    symbol_map.insert("R6".to_string(),   6);
-    symbol_map.insert("R7".to_string(),   7);
-    symbol_map.insert("R8".to_string(),   8);
-    symbol_map.insert("R9".to_string(),   9);
-    symbol_map.insert("R10".to_string(), 10);
-    symbol_map.insert("R11".to_string(), 11);
-    symbol_map.insert("R12".to_string(), 12);
-    symbol_map.insert("R13".to_string(), 13);
-    symbol_map.insert("R14".to_string(), 14);
-    symbol_map.insert("R15".to_string(), 15);
-
-    symbol_map.insert("SP".to_string(),   0);
-    symbol_map.insert("LCL".to_string(),  1);
-    symbol_map.insert("ARG".to_string(),  2);
-    symbol_map.insert("THIS".to_string(), 3);
-    symbol_map.insert("THAT".to_string(), 4);
-
-    symbol_map.insert("SCREEN".to_string(), 16384);
-    symbol_map.insert("KBD".to_string(), 24576);
-
-    SymbolTable {
-        inner: symbol_map,
-        next_allocable_address: 16,
-    }
-}
-
-pub fn get(&self, key: &str) -> Option<&u16> {
-    self.inner.get(&key.to_string())
-}
-
-pub fn get_or_alloc(&mut self, key: &str) -> &u16 {
-    let local_entry = self.inner.entry(key.to_string());
-    let is_occupied: bool;
-
-    match local_entry {
-        // we match into a boolean because Rust's borrowing system is being annoying
-        Entry::Occupied(_entry) => {
-            is_occupied = true;
-        }
-        Entry::Vacant(_entry) => {
-            is_occupied = false;
+        SymbolTable {
+            inner: new_hashmap,
+            next_allocable_address: 0,
         }
     }
 
-    if is_occupied {
-        self.inner.get(key).unwrap()
-    } 
-    else {
-        let addr = self.allocate_address();
-        self.inner.insert(key.to_string(), addr);
-        self.get(key).unwrap()
+    pub fn build_default() -> SymbolTable {
+        /*
+        Implements addresses for default parameters:
+        R0-16: 0-16
+        SP:    0
+        LCL:   1
+        ARG:   2
+        THIS:  3
+        THAT:  4
+        SCREEN: 16384
+        KBD: 24576
+            */
+
+        let mut symbol_map: HashMap<String, u16> = HashMap::new();
+
+        symbol_map.insert("R0".to_string(),   0);
+        symbol_map.insert("R1".to_string(),   1);
+        symbol_map.insert("R2".to_string(),   2);
+        symbol_map.insert("R3".to_string(),   3);
+        symbol_map.insert("R4".to_string(),   4);
+        symbol_map.insert("R5".to_string(),   5);
+        symbol_map.insert("R6".to_string(),   6);
+        symbol_map.insert("R7".to_string(),   7);
+        symbol_map.insert("R8".to_string(),   8);
+        symbol_map.insert("R9".to_string(),   9);
+        symbol_map.insert("R10".to_string(), 10);
+        symbol_map.insert("R11".to_string(), 11);
+        symbol_map.insert("R12".to_string(), 12);
+        symbol_map.insert("R13".to_string(), 13);
+        symbol_map.insert("R14".to_string(), 14);
+        symbol_map.insert("R15".to_string(), 15);
+
+        symbol_map.insert("SP".to_string(),   0);
+        symbol_map.insert("LCL".to_string(),  1);
+        symbol_map.insert("ARG".to_string(),  2);
+        symbol_map.insert("THIS".to_string(), 3);
+        symbol_map.insert("THAT".to_string(), 4);
+
+        symbol_map.insert("SCREEN".to_string(), 16384);
+        symbol_map.insert("KBD".to_string(), 24576);
+
+        SymbolTable {
+            inner: symbol_map,
+            next_allocable_address: 16,
+        }
     }
-}
 
-fn allocate_address(&mut self) -> u16 {
-    self.next_allocable_address += 1;
-    self.next_allocable_address - 1
-}
+    pub fn get(&self, key: &str) -> Option<&u16> {
+        self.inner.get(&key.to_string())
+    }
 
-pub fn insert_new(&mut self, key: String, value: u16) {
-    let key_copy: String = key.clone();
+    pub fn get_or_alloc(&mut self, key: &str) -> &u16 {
+        let local_entry = self.inner.entry(key.to_string());
+        let is_occupied: bool;
 
-    match self.inner
-    .insert(key, value) {
-        None => (),
-        Some(_) => panic!("The key \"{}\" is invalid: key already exists in HashMap", key_copy)
-    }  
-}
+        match local_entry {
+            // we match into a boolean because Rust's borrowing system is being annoying
+            Entry::Occupied(_entry) => {
+                is_occupied = true;
+            }
+            Entry::Vacant(_entry) => {
+                is_occupied = false;
+            }
+        }
+
+        if is_occupied {
+            self.inner.get(key).unwrap()
+        } 
+        else {
+            let addr = self.allocate_address();
+            self.inner.insert(key.to_string(), addr);
+            self.get(key).unwrap()
+        }
+    }
+
+    fn allocate_address(&mut self) -> u16 {
+        self.next_allocable_address += 1;
+        self.next_allocable_address - 1
+    }
+
+    pub fn insert_new(&mut self, key: String, value: u16) {
+        let key_copy: String = key.clone();
+
+        match self.inner.insert(key, value) {
+            None => (),
+            Some(_) => panic!("The key \"{}\" is invalid: key already exists in HashMap", key_copy)
+        }  
+    }
 }

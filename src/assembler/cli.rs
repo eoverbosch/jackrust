@@ -59,7 +59,7 @@ impl Config {
                 config.output = Some(Path::new(
                     config.input.file_name()
                     .unwrap_or(&OsStr::from("a")))
-                    .with_extension(ASM_FILE_EXT));
+                    .with_extension(HACK_FILE_EXT));
             }
         }
 
@@ -86,7 +86,7 @@ impl Config {
         Ok(input_file)
     }
 
-    pub fn make_file_reader(&self) -> io::Result<io::Lines<io::BufReader<fs::File>>> {
+    pub fn file_reader_from_input(&self) -> io::Result<io::Lines<io::BufReader<fs::File>>> {
         let file = fs::File::open(&self.input)?;
         Ok(io::BufReader::new(file).lines())
     }

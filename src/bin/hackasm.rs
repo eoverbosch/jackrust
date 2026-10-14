@@ -14,7 +14,7 @@ fn main() {
     let mut processed_lines: String = String::new();
     let mut line_number_offset: u16 = 0; // Compensates for removed lines
 
-    for (line_number, line_result) in config.make_file_reader().unwrap().enumerate() {
+    for (line_number, line_result) in config.file_reader_from_input().unwrap().enumerate() {
 
         let line: String = parser::strip_whitespace_and_comments(
             line_result.unwrap()
@@ -36,7 +36,6 @@ fn main() {
 
             line_number_offset += 1;
 
-        // else if empty
         } else if line.is_empty(){
             line_number_offset += 1;
 

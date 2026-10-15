@@ -1,12 +1,8 @@
 pub fn strip_comments(line: &str) -> String {
-    line
-    .splitn(2, "//")
-    .next()
-    .unwrap()
-    .to_string()
+    line.splitn(2, "//").next().unwrap().to_string()
 }
 
-/// FunctionDef represent a vm function definition during translation (i.e. function function_label n_vars). 
+/// FunctionDef represent a vm function definition during translation (i.e. function function_label n_vars).
 /// The inner fields map to function_label: String and n_vars: u16.
 #[derive(Debug)]
 pub struct FunctionDef(String);
@@ -27,7 +23,7 @@ impl FunctionDefTracker {
 
     pub fn process_define_statement(&mut self, function_label: &String) {
         self.0 = Some(FunctionDef::new(function_label));
-    }        
+    }
 
     pub fn get_current_label(&self) -> Option<String> {
         self.0.as_ref().map(|def| def.0.to_owned())

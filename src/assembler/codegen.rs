@@ -3,14 +3,14 @@ use std::collections::hash_map::Entry;
 
 pub fn a_instruction(instruction: &str, symbol_table: &mut SymbolTable) -> String {
     let instruction_as_integer = match instruction.parse::<u16>() {
-        Ok(value) => value, 
+        Ok(value) => value,
         Err(error) => match error.kind() {
-            std::num::IntErrorKind::PosOverflow => panic!("Invalid a-instruction due to 16-bit integer overflow"),
+            std::num::IntErrorKind::PosOverflow => {
+                panic!("Invalid a-instruction due to 16-bit integer overflow")
+            }
 
-            _ => symbol_table
-                .get_or_alloc(&instruction)
-                .clone()
-        }
+            _ => symbol_table.get_or_alloc(&instruction).clone(),
+        },
     };
 
     let out = format!("{:016b}", instruction_as_integer); // Format as binary and return
@@ -21,23 +21,17 @@ pub fn a_instruction(instruction: &str, symbol_table: &mut SymbolTable) -> Strin
 /// Parses each block accordingly and converts to binary number.
 /// Each block represents a different slice of bits of the binary instruction, so we can just add
 /// as numbers to binary number b to concatenate. Parse as binary string afterwards
-/// 
+///
 /// 111 (convention) maps to b[0..2]: constant for C-instructions.
 /// jump instruction maps to b[2..9]
 /// oper instruction maps to b[10..12]
 /// dest instruction maps to b[13..15]
 pub fn c_instruction(line: &str) -> String {
+    let (dest_instruction, rhs) = line.split_once("=").unwrap_or(("", line));
 
-    let (dest_instruction, rhs) = line
-        .split_once("=")
-        .unwrap_or(("", line));
+    let (oper_instruction, jump_instruction) = rhs.split_once(";").unwrap_or((rhs, ""));
 
-    let (oper_instruction, jump_instruction) = rhs
-        .split_once(";")
-        .unwrap_or((rhs,""));
-
-    let instruction_as_integer: u16
-        = (0b1110_0000_0000_0000 as u16)
+    let instruction_as_integer: u16 = (0b1110_0000_0000_0000 as u16)
         + dest(&dest_instruction)
         + oper(&oper_instruction)
         + jump(&jump_instruction);
@@ -49,21 +43,21 @@ pub fn c_instruction(line: &str) -> String {
 
 fn dest(code_string: &str) -> u16 {
     match code_string {
-        ""    => 0b000_000,
-        "M"   => 0b001_000,
-        "D"   => 0b010_000,
-        "MD"  => 0b011_000,
-        "A"   => 0b100_000,
-        "AM"  => 0b101_000,
-        "AD"  => 0b110_000,
+        "" => 0b000_000,
+        "M" => 0b001_000,
+        "D" => 0b010_000,
+        "A" => 0b100_000,
+        "MD" => 0b011_000,
+        "AM" => 0b101_000,
+        "AD" => 0b110_000,
         "AMD" => 0b111_000,
-        _ => panic!("Syntax error for dest mnemonic: {}", code_string)
+        _ => panic!("Syntax error for dest mnemonic: {}", code_string),
     }
 }
 
 fn jump(code_string: &str) -> u16 {
     match code_string {
-        ""    => 0b000,
+        "" => 0b000,
         "JGT" => 0b001,
         "JEQ" => 0b010,
         "JGE" => 0b011,
@@ -78,15 +72,15 @@ fn jump(code_string: &str) -> u16 {
 fn oper(code_string: &str) -> u16 {
     match code_string {
         // a = 0
-        "0"   => 0b0000_101010_000000,
-        "1"   => 0b0000_111111_000000,
-        "-1"  => 0b0000_111010_000000,
-        "D"   => 0b0000_001100_000000,
-        "A"   => 0b0000_110000_000000,
-        "!D"  => 0b0000_001101_000000,
-        "!A"  => 0b0000_110001_000000,
-        "-D"  => 0b0000_001111_000000,
-        "-A"  => 0b0000_110011_000000,
+        "0" => 0b0000_101010_000000,
+        "1" => 0b0000_111111_000000,
+        "-1" => 0b0000_111010_000000,
+        "D" => 0b0000_001100_000000,
+        "A" => 0b0000_110000_000000,
+        "!D" => 0b0000_001101_000000,
+        "!A" => 0b0000_110001_000000,
+        "-D" => 0b0000_001111_000000,
+        "-A" => 0b0000_110011_000000,
         "D+1" => 0b0000_011111_000000,
         "A+1" => 0b0000_110111_000000,
         "D-1" => 0b0000_001110_000000,
@@ -98,9 +92,9 @@ fn oper(code_string: &str) -> u16 {
         "D|A" => 0b0000_010101_000000,
 
         // a = 1
-        "M"   => 0b0001_110000_000000,
-        "!M"  => 0b0001_110001_000000,
-        "-M"  => 0b0001_110011_000000,
+        "M" => 0b0001_110000_000000,
+        "!M" => 0b0001_110001_000000,
+        "-M" => 0b0001_110011_000000,
         "M+1" => 0b0001_110111_000000,
         "M-1" => 0b0001_110010_000000,
         "D+M" => 0b0001_000010_000000,
@@ -112,7 +106,6 @@ fn oper(code_string: &str) -> u16 {
         _ => panic!("Syntax error for comp mnemonic: {}", code_string),
     }
 }
-
 
 pub struct SymbolTable {
     pub inner: HashMap<String, u16>,
@@ -144,16 +137,16 @@ impl SymbolTable {
 
         let mut symbol_map: HashMap<String, u16> = HashMap::new();
 
-        symbol_map.insert("R0".to_string(),   0);
-        symbol_map.insert("R1".to_string(),   1);
-        symbol_map.insert("R2".to_string(),   2);
-        symbol_map.insert("R3".to_string(),   3);
-        symbol_map.insert("R4".to_string(),   4);
-        symbol_map.insert("R5".to_string(),   5);
-        symbol_map.insert("R6".to_string(),   6);
-        symbol_map.insert("R7".to_string(),   7);
-        symbol_map.insert("R8".to_string(),   8);
-        symbol_map.insert("R9".to_string(),   9);
+        symbol_map.insert("R0".to_string(), 0);
+        symbol_map.insert("R1".to_string(), 1);
+        symbol_map.insert("R2".to_string(), 2);
+        symbol_map.insert("R3".to_string(), 3);
+        symbol_map.insert("R4".to_string(), 4);
+        symbol_map.insert("R5".to_string(), 5);
+        symbol_map.insert("R6".to_string(), 6);
+        symbol_map.insert("R7".to_string(), 7);
+        symbol_map.insert("R8".to_string(), 8);
+        symbol_map.insert("R9".to_string(), 9);
         symbol_map.insert("R10".to_string(), 10);
         symbol_map.insert("R11".to_string(), 11);
         symbol_map.insert("R12".to_string(), 12);
@@ -161,9 +154,9 @@ impl SymbolTable {
         symbol_map.insert("R14".to_string(), 14);
         symbol_map.insert("R15".to_string(), 15);
 
-        symbol_map.insert("SP".to_string(),   0);
-        symbol_map.insert("LCL".to_string(),  1);
-        symbol_map.insert("ARG".to_string(),  2);
+        symbol_map.insert("SP".to_string(), 0);
+        symbol_map.insert("LCL".to_string(), 1);
+        symbol_map.insert("ARG".to_string(), 2);
         symbol_map.insert("THIS".to_string(), 3);
         symbol_map.insert("THAT".to_string(), 4);
 
@@ -183,13 +176,12 @@ impl SymbolTable {
     pub fn get_or_alloc(&mut self, key: &str) -> &u16 {
         let is_occupied = match self.inner.entry(key.to_string()) {
             Entry::Occupied(_) => true,
-            Entry::Vacant(_) => false
+            Entry::Vacant(_) => false,
         };
 
         if is_occupied {
             self.inner.get(key).unwrap()
-        } 
-        else {
+        } else {
             let addr = self.allocate_address();
             self.inner.insert(key.to_string(), addr);
             self.get(key).unwrap()
@@ -206,7 +198,10 @@ impl SymbolTable {
 
         match self.inner.insert(key, value) {
             None => (),
-            Some(_) => panic!("The key \"{}\" is invalid: key already exists in HashMap", key_copy)
-        }  
+            Some(_) => panic!(
+                "The key \"{}\" is invalid: key already exists in HashMap",
+                key_copy
+            ),
+        }
     }
 }

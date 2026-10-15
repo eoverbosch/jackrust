@@ -15,11 +15,8 @@ fn main() {
     let mut line_number_offset: u16 = 0; // Compensates for removed lines
 
     for (line_number, line_result) in config.file_reader_from_input().unwrap().enumerate() {
+        let line: String = parser::strip_whitespace_and_comments(line_result.unwrap());
 
-        let line: String = parser::strip_whitespace_and_comments(
-            line_result.unwrap()
-        );
-        
         // If L-instruction
         if let Some(unprocessed_statement) = line.strip_prefix("(") {
             let symbol_statement =
@@ -31,12 +28,11 @@ fn main() {
 
             symbol_table.insert_new(
                 symbol_statement.to_string(),
-                (line_number as u16) - line_number_offset
+                (line_number as u16) - line_number_offset,
             );
 
             line_number_offset += 1;
-
-        } else if line.is_empty(){
+        } else if line.is_empty() {
             line_number_offset += 1;
 
         // else: normal instruction, add to processed lines buffer
@@ -48,33 +44,31 @@ fn main() {
 
     // SECOND PASS: code assembly
     let mut final_lines: String = String::new();
-    
+
     for line in processed_lines.lines() {
         let instruction_string = match line.strip_prefix("@") {
             Some(stripped_line) => codegen::a_instruction(stripped_line, &mut symbol_table),
-            None                => codegen::c_instruction(line)
+            None => codegen::c_instruction(line),
         };
 
         final_lines.push_str(&instruction_string);
         final_lines.push_str("\n");
     }
-    
-    // Remove extra new line
-    let final_lines = final_lines
-        .strip_suffix('\n')
-        .unwrap_or(&final_lines);
 
-    // Write output to file    
-    fs::write(
-        config.output.as_ref().unwrap(),
-        final_lines
-    )
-    .expect("Unable to write to output file");
+    // Remove extra new line
+    let final_lines = final_lines.strip_suffix('\n').unwrap_or(&final_lines);
+
+    // Write output to file
+    fs::write(config.output.as_ref().unwrap(), final_lines)
+        .expect("Unable to write to output file");
 
     if config.dump {
         fs::write(
             &config.output.unwrap().with_extension("dump"),
-            format!("{}\n\nSymbol table:\n{:#?}", processed_lines, symbol_table.inner)
+            format!(
+                "{}\n\nSymbol table:\n{:#?}",
+                processed_lines, symbol_table.inner
+            ),
         )
         .expect("Unable to dump assembler data to file");
     }

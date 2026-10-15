@@ -14,30 +14,32 @@ pub enum Segment {
     This,
     That,
     Temp,
-    Pointer
+    Pointer,
 }
 
 impl Segment {
-    pub fn parse(segment_string: &str)
-    -> Result<Segment, InvalidSegmentError> {
-
+    pub fn parse(segment_string: &str) -> Result<Segment, InvalidSegmentError> {
         let segment: Segment = match segment_string {
             "constant" => Segment::Constant,
-            "local"    => Segment::Local,
+            "local" => Segment::Local,
             "argument" => Segment::Argument,
-            "static"   => Segment::Static,
-            "this"     => Segment::This,
-            "that"     => Segment::That,
-            "temp"     => Segment::Temp,
-            "pointer"  => Segment::Pointer,
+            "static" => Segment::Static,
+            "this" => Segment::This,
+            "that" => Segment::That,
+            "temp" => Segment::Temp,
+            "pointer" => Segment::Pointer,
 
-            _ => return Err(InvalidSegmentError)
+            _ => return Err(InvalidSegmentError),
         };
 
         Ok(segment)
     }
 
-    pub fn get_memlabel(&self, filename: &str, index: &u16) -> Result<String, NoAvailableMemlabelError> {
+    pub fn get_memlabel(
+        &self,
+        filename: &str,
+        index: &u16,
+    ) -> Result<String, NoAvailableMemlabelError> {
         use Segment::*;
 
         let memlabel = match self {
@@ -47,15 +49,19 @@ impl Segment {
             That => "THAT".to_owned(),
             Static => labels::generate_static_label(filename, index),
             Temp => {
-                if index > &7 {panic!("Temp index is outside segment bounds")}
+                if index > &7 {
+                    panic!("Temp index is outside segment bounds")
+                }
                 (5 + index).to_string().to_owned()
-            }, 
+            }
             Pointer => {
-                if index > &1 {panic!("pointer index is outside segment bounds")}
+                if index > &1 {
+                    panic!("pointer index is outside segment bounds")
+                }
                 (3 + index).to_string().to_owned()
-            },
+            }
 
-            _ => return Err(NoAvailableMemlabelError)
+            _ => return Err(NoAvailableMemlabelError),
         };
 
         Ok(memlabel)
@@ -71,41 +77,39 @@ pub enum VMOperation {
     Compare(CompareOp),
     StackOperation(StackOp),
     BranchOperation(BranchOp),
-    FunctionOperation(FunctionOp)
+    FunctionOperation(FunctionOp),
 }
 
 impl VMOperation {
-    pub fn parse(operation_string: &str)
-    -> Result<VMOperation, InvalidKeywordError> {
-        
+    pub fn parse(operation_string: &str) -> Result<VMOperation, InvalidKeywordError> {
         use VMOperation::*;
 
         let operation = match operation_string {
             "INIT" => Initialisation(InitOp),
 
-            "add"  => Arithmetic(ArithmeticOp::Add),
-            "sub"  => Arithmetic(ArithmeticOp::Subtract),
-            "neg"  => Arithmetic(ArithmeticOp::Negate),
-            "and"  => Arithmetic(ArithmeticOp::And),
-            "or"   => Arithmetic(ArithmeticOp::Or),
-            "not"  => Arithmetic(ArithmeticOp::Not),
+            "add" => Arithmetic(ArithmeticOp::Add),
+            "sub" => Arithmetic(ArithmeticOp::Subtract),
+            "neg" => Arithmetic(ArithmeticOp::Negate),
+            "and" => Arithmetic(ArithmeticOp::And),
+            "or" => Arithmetic(ArithmeticOp::Or),
+            "not" => Arithmetic(ArithmeticOp::Not),
 
-            "eq"   => Compare(CompareOp::Equate),
-            "gt"   => Compare(CompareOp::GreaterThan),
-            "lt"   => Compare(CompareOp::LessThan),
+            "eq" => Compare(CompareOp::Equate),
+            "gt" => Compare(CompareOp::GreaterThan),
+            "lt" => Compare(CompareOp::LessThan),
 
             "push" => StackOperation(StackOp::Push),
-            "pop"  => StackOperation(StackOp::Pop),
+            "pop" => StackOperation(StackOp::Pop),
 
-            "label"   => BranchOperation(BranchOp::Label),
-            "goto"    => BranchOperation(BranchOp::Goto),
+            "label" => BranchOperation(BranchOp::Label),
+            "goto" => BranchOperation(BranchOp::Goto),
             "if-goto" => BranchOperation(BranchOp::IfGoto),
 
             "function" => FunctionOperation(FunctionOp::Function),
-            "call"     => FunctionOperation(FunctionOp::Call),
-            "return"   => FunctionOperation(FunctionOp::Return),
+            "call" => FunctionOperation(FunctionOp::Call),
+            "return" => FunctionOperation(FunctionOp::Return),
 
-            _ => return Err(InvalidKeywordError)
+            _ => return Err(InvalidKeywordError),
         };
 
         Ok(operation)
@@ -116,7 +120,9 @@ pub struct InitOp;
 
 impl InitOp {
     pub fn emit_asm(&self, target: &mut String, address_pointer: AddressPointer, value: u16) {
-        writeln!(target, "@{}\n\
+        writeln!(
+            target,
+            "@{}\n\
             D=A\n\
             @{}\n\
             M=D",
@@ -132,19 +138,18 @@ pub enum AddressPointer {
     Local,
     Argument,
     This,
-    That
+    That,
 }
 
 impl AddressPointer {
-    pub fn parse(address_string: &str)
-    -> Result<AddressPointer, InvalidKeywordError> {
+    pub fn parse(address_string: &str) -> Result<AddressPointer, InvalidKeywordError> {
         let address = match address_string {
-            "SP"   => AddressPointer::StackPointer,
-            "LCL"  => AddressPointer::Local,
-            "ARG"  => AddressPointer::Argument,
+            "SP" => AddressPointer::StackPointer,
+            "LCL" => AddressPointer::Local,
+            "ARG" => AddressPointer::Argument,
             "THIS" => AddressPointer::This,
             "THAT" => AddressPointer::That,
-            _ => return Err(InvalidKeywordError)
+            _ => return Err(InvalidKeywordError),
         };
 
         Ok(address)
@@ -153,10 +158,10 @@ impl AddressPointer {
     pub fn get_label(&self) -> String {
         match self {
             AddressPointer::StackPointer => "SP".to_owned(),
-            AddressPointer::Local        => "LCL".to_owned(),
-            AddressPointer::Argument     => "ARG".to_owned(),
-            AddressPointer::This         => "THIS".to_owned(),
-            AddressPointer::That         => "THAT".to_owned(),
+            AddressPointer::Local => "LCL".to_owned(),
+            AddressPointer::Argument => "ARG".to_owned(),
+            AddressPointer::This => "THIS".to_owned(),
+            AddressPointer::That => "THAT".to_owned(),
         }
     }
 }
@@ -174,23 +179,26 @@ impl ArithmeticOp {
     pub fn emit_asm(&self, target: &mut String) {
         let _ = match self {
             // 2-parameter operations
-            ArithmeticOp::Add | ArithmeticOp::Subtract 
-            | ArithmeticOp::And | ArithmeticOp::Or 
-            => writeln!(target, "@SP\n\
+            ArithmeticOp::Add | ArithmeticOp::Subtract | ArithmeticOp::And | ArithmeticOp::Or => {
+                writeln!(
+                    target,
+                    "@SP\n\
                 AM=M-1\n\
                 D=M\n\
                 A=A-1\n\
                 {}",
-                self.insert_operation()
-            ),
+                    self.insert_operation()
+                )
+            }
 
             // 1-parameter operation
-            ArithmeticOp::Negate | ArithmeticOp::Not 
-            => writeln!(target, "@SP\n\
+            ArithmeticOp::Negate | ArithmeticOp::Not => writeln!(
+                target,
+                "@SP\n\
                 A=M-1\n\
                 {}",
                 self.insert_operation()
-            )
+            ),
         };
     }
 
@@ -198,11 +206,11 @@ impl ArithmeticOp {
         match self {
             ArithmeticOp::Add => "M=D+M",
             ArithmeticOp::Subtract => "M=M-D",
-            ArithmeticOp::And => "M=D&M",                
+            ArithmeticOp::And => "M=D&M",
             ArithmeticOp::Or => "M=D|M",
 
             ArithmeticOp::Negate => "M=-M",
-            ArithmeticOp::Not => "M=!M"
+            ArithmeticOp::Not => "M=!M",
         }
     }
 }
@@ -210,12 +218,14 @@ impl ArithmeticOp {
 pub enum CompareOp {
     Equate,
     GreaterThan,
-    LessThan
+    LessThan,
 }
 
 impl CompareOp {
     pub fn emit_asm(&self, target: &mut String, label: String) {
-        writeln!(target, "@SP\n\
+        writeln!(
+            target,
+            "@SP\n\
             AM=M-1\n\
             D=M\n\
             A=A-1\n\
@@ -245,26 +255,37 @@ impl CompareOp {
 
 pub enum StackOp {
     Push,
-    Pop
+    Pop,
 }
 
 impl StackOp {
-    pub fn emit_asm(&self, target: &mut String, segment: Segment, index: u16, static_label: &str)-> () {
+    pub fn emit_asm(
+        &self,
+        target: &mut String,
+        segment: Segment,
+        index: u16,
+        static_label: &str,
+    ) -> () {
         use Segment::*;
 
         let _ = match (self, segment) {
             (StackOp::Push, Constant) => {
-                writeln!(target,"@{}\n\
+                writeln!(
+                    target,
+                    "@{}\n\
                 D=A\n\
                 @SP\n\
                 M=M+1\n\
                 A=M-1\n\
                 M=D",
-                index)
+                    index
+                )
             }
 
-            (StackOp::Push, seg @ ( Local | Argument | This | That )) => {
-                writeln!(target,"@{}\n\
+            (StackOp::Push, seg @ (Local | Argument | This | That)) => {
+                writeln!(
+                    target,
+                    "@{}\n\
                 D=A\n\
                 @{}\n\
                 A=D+M\n\
@@ -273,25 +294,30 @@ impl StackOp {
                 M=M+1\n\
                 A=M-1\n\
                 M=D",
-                index,
-                seg.get_memlabel(static_label, &index).unwrap())
-            },
+                    index,
+                    seg.get_memlabel(static_label, &index).unwrap()
+                )
+            }
 
-            (StackOp::Push, seg @ ( Temp | Static | Pointer )) => {
-                writeln!(target,"@{}\n\
+            (StackOp::Push, seg @ (Temp | Static | Pointer)) => {
+                writeln!(
+                    target,
+                    "@{}\n\
                 D=M\n\
                 @SP\n\
                 M=M+1\n\
                 A=M-1\n\
                 M=D",
-                seg.get_memlabel(static_label, &index).unwrap())
-            },
+                    seg.get_memlabel(static_label, &index).unwrap()
+                )
+            }
 
-            (StackOp::Pop, Constant) => 
-                panic!("Cannot pop on virtual segment \"Constant\" "),
+            (StackOp::Pop, Constant) => panic!("Cannot pop on virtual segment \"Constant\" "),
 
-            (StackOp::Pop, seg @ ( Local | Argument | This | That )) => {
-                writeln!(target,"@{}\n\
+            (StackOp::Pop, seg @ (Local | Argument | This | That)) => {
+                writeln!(
+                    target,
+                    "@{}\n\
                 D=A\n\
                 @{}\n\
                 D=D+M\n\
@@ -303,12 +329,15 @@ impl StackOp {
                 @R13\n\
                 A=M\n\
                 M=D",
-                index,
-                seg.get_memlabel(static_label, &index).unwrap())
-            },
+                    index,
+                    seg.get_memlabel(static_label, &index).unwrap()
+                )
+            }
 
-            (StackOp::Pop, seg @ ( Temp | Static | Pointer )) => {
-                writeln!(target,"@{}\n\
+            (StackOp::Pop, seg @ (Temp | Static | Pointer)) => {
+                writeln!(
+                    target,
+                    "@{}\n\
                 D=A\n\
                 @R13\n\
                 M=D\n\
@@ -318,8 +347,9 @@ impl StackOp {
                 @R13\n\
                 A=M\n\
                 M=D",
-                seg.get_memlabel(static_label, &index).unwrap())
-            },
+                    seg.get_memlabel(static_label, &index).unwrap()
+                )
+            }
         };
     }
 }
@@ -327,30 +357,35 @@ impl StackOp {
 pub enum BranchOp {
     Label,
     Goto,
-    IfGoto
+    IfGoto,
 }
 
 impl BranchOp {
-    pub fn emit_asm(&self, target: &mut String, branch_label: &String)-> () {
+    pub fn emit_asm(&self, target: &mut String, branch_label: &String) -> () {
         let _ = match self {
             BranchOp::Label => {
-                writeln!(target,"({})",
-                branch_label)
+                writeln!(target, "({})", branch_label)
             }
 
             BranchOp::Goto => {
-                writeln!(target,"@{}\n\
+                writeln!(
+                    target,
+                    "@{}\n\
                 0;JMP",
-                branch_label)
-            },
+                    branch_label
+                )
+            }
 
             BranchOp::IfGoto => {
-                writeln!(target,"@SP\n\
+                writeln!(
+                    target,
+                    "@SP\n\
                 AM=M-1\n\
                 D=M\n\
                 @{}\n\
-                D;JNE", 
-                branch_label)
+                D;JNE",
+                    branch_label
+                )
             }
         };
     }
@@ -360,14 +395,22 @@ impl BranchOp {
 pub enum FunctionOp {
     Call,
     Function,
-    Return
+    Return,
 }
 
 impl FunctionOp {
-    pub fn emit_asm(&self, target: &mut String, function_label: &String, n: u16, id: &String)-> () {
+    pub fn emit_asm(
+        &self,
+        target: &mut String,
+        function_label: &String,
+        n: u16,
+        id: &String,
+    ) -> () {
         let _ = match self {
             FunctionOp::Function => {
-                writeln!(target,"({})\n\
+                writeln!(
+                    target,
+                    "({})\n\
                 @SP\n\
                 D=M\n\
                 @LCL\n\
@@ -376,15 +419,17 @@ impl FunctionOp {
                 D=A\n\
                 @SP\n\
                 M=D",
-                function_label,
-                "M=0\nA=A+1\n".repeat(n as usize),
+                    function_label,
+                    "M=0\nA=A+1\n".repeat(n as usize),
                 )
             }
-    
+
             FunctionOp::Call => {
                 let return_label = labels::generate_return_label(function_label, id);
 
-                writeln!(target,"@ARG\n\
+                writeln!(
+                    target,
+                    "@ARG\n\
                 D=M\n\
                 @R14\n\
                 M=D\n\
@@ -427,15 +472,13 @@ impl FunctionOp {
                 @{}\n\
                 0;JMP\n\
                 ({})",
-                n,
-                return_label,
-                function_label,
-                return_label
+                    n, return_label, function_label, return_label
                 )
-            },
+            }
 
-            FunctionOp::Return => 
-                writeln!(target,"@LCL\n\
+            FunctionOp::Return => writeln!(
+                target,
+                "@LCL\n\
                 D=M\n\
                 @5\n\
                 D=D-A\n\
@@ -475,11 +518,11 @@ impl FunctionOp {
                 M=D\n\
                 @R13\n\
                 A=M\n\
-                0;JMP")
+                0;JMP"
+            ),
         };
     }
 }
-
 
 pub mod labels {
     pub fn generate_static_label(filename: &str, index: &u16) -> String {

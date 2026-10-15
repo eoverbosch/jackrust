@@ -4,14 +4,14 @@ use std::ffi::OsStr;
 use std::path::PathBuf;
 
 #[derive(Clone)]
-    pub struct FunctionRegistration {
-        identifier: String,
-        line_bounds: (usize, usize),
-    }
+pub struct FunctionRegistration {
+    identifier: String,
+    line_bounds: (usize, usize),
+}
 
 pub enum FunctionNode {
     Called(String),
-    Defined(FunctionRegistration)
+    Defined(FunctionRegistration),
 }
 
 #[derive(Debug)]
@@ -26,36 +26,34 @@ impl std::fmt::Display for PlaceholderError {
 
 impl std::error::Error for PlaceholderError {}
 
-    pub struct CallGraph {
-        graph: DiGraph<FunctionNode, ()>,
-        nodes: HashMap<String, NodeIndex>
-    }
+pub struct CallGraph {
+    graph: DiGraph<FunctionNode, ()>,
+    nodes: HashMap<String, NodeIndex>,
+}
 
 impl CallGraph {
     pub fn new() -> CallGraph {
         CallGraph {
-            graph: DiGraph::new(), 
-            nodes: HashMap::new()
+            graph: DiGraph::new(),
+            nodes: HashMap::new(),
         }
     }
 
-    pub fn get(&self, key: &str) -> Option<&FunctionNode>{
+    pub fn get(&self, key: &str) -> Option<&FunctionNode> {
         self.nodes.get(key).and_then(|&i| self.graph.node_weight(i))
     }
 
     pub fn add_node(&mut self, node_weight: FunctionNode) -> Option<NodeIndex> {
         let node_key = match &node_weight {
             FunctionNode::Called(identifier) => identifier.clone(),
-            FunctionNode::Defined(function_reg) => function_reg.identifier.clone()
+            FunctionNode::Defined(function_reg) => function_reg.identifier.clone(),
         };
 
         if !self.nodes.contains_key(&node_key) {
-
             let node_index = self.graph.add_node(node_weight);
             self.nodes.insert(node_key.to_owned(), node_index);
 
             Some(node_index)
-
         } else {
             None
         }
@@ -63,9 +61,11 @@ impl CallGraph {
 
     fn add_defined(&mut self, function_reg: FunctionRegistration) -> NodeIndex {
         let Some(idx) = self.nodes.get(&function_reg.identifier) else {
-            let idx = self.graph.add_node(FunctionNode::Defined(function_reg.clone()));
+            let idx = self
+                .graph
+                .add_node(FunctionNode::Defined(function_reg.clone()));
             self.nodes.insert(function_reg.identifier.to_owned(), idx);
-            return idx
+            return idx;
         };
 
         idx.to_owned()
@@ -73,15 +73,20 @@ impl CallGraph {
 
     pub fn add_called(&mut self, identifier: &str) -> NodeIndex {
         let Some(idx) = self.nodes.get(identifier) else {
-            let idx = self.graph.add_node(FunctionNode::Called(identifier.to_string()));
+            let idx = self
+                .graph
+                .add_node(FunctionNode::Called(identifier.to_string()));
             self.nodes.insert(identifier.to_owned(), idx);
-            return idx
+            return idx;
         };
 
         idx.to_owned()
     }
 
-    fn upgrade_node(&mut self, function_reg: FunctionRegistration) -> Result<NodeIndex,Box<dyn std::error::Error>> {
+    fn upgrade_node(
+        &mut self,
+        function_reg: FunctionRegistration,
+    ) -> Result<NodeIndex, Box<dyn std::error::Error>> {
         match self.get(&function_reg.identifier).unwrap() {
             FunctionNode::Defined(_) => Err(Box::new(PlaceholderError)),
             FunctionNode::Called(identifier) => {
@@ -94,11 +99,14 @@ impl CallGraph {
 
     /// Either adds a non-existing node based on identifier, or upgrades a function call (Called)
     /// to a function definition (Defined). Errors when caller tries to upgrade an already existing Defined node
-    pub fn try_add_or_upgrade(&mut self, function_reg: FunctionRegistration) -> Result<NodeIndex,Box<dyn std::error::Error>> {
+    pub fn try_add_or_upgrade(
+        &mut self,
+        function_reg: FunctionRegistration,
+    ) -> Result<NodeIndex, Box<dyn std::error::Error>> {
         match self.get(&function_reg.identifier) {
             Some(FunctionNode::Defined(_)) => return Err(Box::new(PlaceholderError)),
             Some(FunctionNode::Called(_)) => self.upgrade_node(function_reg),
-            None => Ok(self.add_defined(function_reg))
+            None => Ok(self.add_defined(function_reg)),
         }
     }
 
@@ -106,30 +114,34 @@ impl CallGraph {
         &self,
         entrypoint_label: &str,
         files: &'a [CachedFile],
-    ) -> Result<Vec<std::iter::Take<std::iter::Skip<std::str::Lines<'a>>>>, Box<dyn std::error::Error>> {
-
-        let entrypoint_index = self.nodes.get(entrypoint_label)
-            .ok_or(PlaceholderError)?;
+    ) -> Result<
+        Vec<std::iter::Take<std::iter::Skip<std::str::Lines<'a>>>>,
+        Box<dyn std::error::Error>,
+    > {
+        let entrypoint_index = self.nodes.get(entrypoint_label).ok_or(PlaceholderError)?;
 
         let mut readers = Vec::new();
         let mut dfs = petgraph::visit::Dfs::new(&self.graph, *entrypoint_index);
 
         while let Some(node_index) = dfs.next(&self.graph) {
             // Every reachable node must be Defined at this point
-            let FunctionNode::Defined(function_reg) = &self.graph[node_index]
-                else { return Err(Box::new(PlaceholderError)) };
+            let FunctionNode::Defined(function_reg) = &self.graph[node_index] else {
+                return Err(Box::new(PlaceholderError));
+            };
 
             // Resolve file from identifier prefix
-            let (file_label, _) = function_reg.identifier.split_once(".")
+            let (file_label, _) = function_reg
+                .identifier
+                .split_once(".")
                 .ok_or(PlaceholderError)?;
 
-            let file = files.iter()
+            let file = files
+                .iter()
                 .find(|file| file.filepath.file_stem() == Some(OsStr::new(file_label)))
                 .ok_or(PlaceholderError)?;
 
             // File must already be cached; error otherwise
-            let content = file.content.as_ref()
-                .ok_or(PlaceholderError)?;
+            let content = file.content.as_ref().ok_or(PlaceholderError)?;
 
             // line_bounds inclusive on both ends
             let (start, end) = function_reg.line_bounds;
@@ -141,16 +153,17 @@ impl CallGraph {
         Ok(readers)
     }
 
-    pub fn from_entrypoint(entrypoint_label: String, files: &mut Vec<CachedFile>)
-        -> Result<CallGraph, Box<dyn std::error::Error>> {
-
+    pub fn from_entrypoint(
+        entrypoint_label: String,
+        files: &mut Vec<CachedFile>,
+    ) -> Result<CallGraph, Box<dyn std::error::Error>> {
         let mut callgraph = CallGraph::new();
         let mut worklist: Vec<usize> = Vec::new(); // usize is an index into files
 
-        let (entrypoint_filename, _) = entrypoint_label.split_once(".")
-            .ok_or(PlaceholderError)?;
+        let (entrypoint_filename, _) = entrypoint_label.split_once(".").ok_or(PlaceholderError)?;
 
-        let entrypoint_file_index = files.iter()
+        let entrypoint_file_index = files
+            .iter()
             .position(|file| file.filepath.file_stem() == Some(OsStr::new(entrypoint_filename)))
             .ok_or(PlaceholderError)?;
 
@@ -162,11 +175,13 @@ impl CallGraph {
             let vm_file = &mut files[vm_file_index];
 
             // If file has been opened already, continue
-            if let Some(_) = vm_file.content {continue}
+            if let Some(_) = vm_file.content {
+                continue;
+            }
 
-            // If not, scan file 
+            // If not, scan file
             vm_file.read()?;
-            
+
             let content = files[vm_file_index].content.as_ref().unwrap();
             let vm_file_length = content.lines().count();
 
@@ -177,11 +192,12 @@ impl CallGraph {
                     Some("function") => {
                         // Store final version of current active function in callgraph
                         if let Some(fn_index) = active_function_index {
-
                             // Access active function in callgraph
-                            let FunctionNode::Defined(active_function) 
-                                = callgraph.graph.node_weight_mut(fn_index).unwrap()
-                                    else {unreachable!()};
+                            let FunctionNode::Defined(active_function) =
+                                callgraph.graph.node_weight_mut(fn_index).unwrap()
+                            else {
+                                unreachable!()
+                            };
 
                             // Replace line end
                             active_function.line_bounds.1 = line_number - 1;
@@ -192,16 +208,16 @@ impl CallGraph {
 
                         let function_reg = FunctionRegistration {
                             identifier: function_label.to_owned(),
-                            line_bounds: (line_number, vm_file_length - 1)
+                            line_bounds: (line_number, vm_file_length - 1),
                         };
-                        
+
                         // If identifier doesn't exist in callgraph or is Called, insert
                         // new function registration as Defined. If exists but is defined, error
                         let new_index = callgraph.try_add_or_upgrade(function_reg)?;
 
                         // Set active function to NodeIndex
                         active_function_index = Some(new_index);
-                    },
+                    }
 
                     Some("call") => {
                         // If identifier doesn't exist in callgraph: add as Called
@@ -216,17 +232,21 @@ impl CallGraph {
                         }
 
                         // Find file relating to function in files and add to worklist
-                        let Some((file_label, _)) = function_label.split_once(".") 
-                            else {return Err(Box::new(PlaceholderError))};
+                        let Some((file_label, _)) = function_label.split_once(".") else {
+                            return Err(Box::new(PlaceholderError));
+                        };
 
-                        let file_index = files.iter()
-                            .position(|file| file.filepath.file_stem() == Some(OsStr::new(file_label)))
+                        let file_index = files
+                            .iter()
+                            .position(|file| {
+                                file.filepath.file_stem() == Some(OsStr::new(file_label))
+                            })
                             .ok_or(PlaceholderError)?;
-                        
-                        worklist.push(file_index)
-                    },
 
-                    _ => continue
+                        worklist.push(file_index)
+                    }
+
+                    _ => continue,
                 }
             }
         }
@@ -236,7 +256,7 @@ impl CallGraph {
 
 pub struct CachedFile {
     pub filepath: PathBuf,
-    pub content: Option<String>
+    pub content: Option<String>,
 }
 
 impl CachedFile {
@@ -247,7 +267,10 @@ impl CachedFile {
     }
 
     pub fn from_path(path_in: impl Into<PathBuf>) -> CachedFile {
-        CachedFile { filepath: path_in.into(), content: None }
+        CachedFile {
+            filepath: path_in.into(),
+            content: None,
+        }
     }
 
     pub fn read(&mut self) -> Result<(), std::io::Error> {

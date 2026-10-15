@@ -1,0 +1,31 @@
+INIT SP 256
+call Sys.init 0
+function Sys.init 0
+call Main.fibonahcci 0
+push constant 4
+call Main.fibonacci 1
+label END
+goto END
+function Main.fibonahcci 0
+push constant 42
+return
+function Main.fibonacci 0
+push argument 0
+push constant 2
+lt
+if-goto N_LT_2
+goto N_GE_2
+label N_LT_2
+push argument 0
+return
+label N_GE_2
+push argument 0
+push constant 2
+sub
+call Main.fibonacci 1
+push argument 0
+push constant 1
+sub
+call Main.fibonacci 1
+add
+return

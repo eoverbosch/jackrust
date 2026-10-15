@@ -1,0 +1,57 @@
+@R0
+D=M
+@END
+D;JLE
+@n
+M=D
+@SCREEN
+D=A
+@addr
+M=D
+@addr
+A=M
+M=-1
+@addr
+D=M
+@32
+D=D+A
+@addr
+M=D
+@n
+MD=M-1
+@LOOP
+D;JGT
+@END
+0;JMP
+
+
+Symbol table:
+{
+    "R10": 10,
+    "R2": 2,
+    "THAT": 4,
+    "R0": 0,
+    "SP": 0,
+    "SCREEN": 16384,
+    "LCL": 1,
+    "R15": 15,
+    "THIS": 3,
+    "LOOP": 10,
+    "R13": 13,
+    "R9": 9,
+    "END": 23,
+    "n": 16,
+    "R1": 1,
+    "R5": 5,
+    "R4": 4,
+    "R11": 11,
+    "KBD": 24576,
+    "addr": 17,
+    "R6": 6,
+    "R3": 3,
+    "R8": 8,
+    "R7": 7,
+    "R12": 12,
+    "R14": 14,
+    "ARG": 2,
+}

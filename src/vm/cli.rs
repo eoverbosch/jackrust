@@ -6,28 +6,15 @@ use clap::builder::OsStr;
 use clap::CommandFactory;
 use clap::Parser;
 
-
 const VM_FILE_EXT: &str = "vm";
 const ASM_FILE_EXT: &str = "asm";
 pub const ENTRYPOINT: &str = "Sys.init";
 
 
-#[derive(Default)]
-pub enum Mode {
-    #[default]
-    None, 
-    SingleFile,
-    Directory
-}
-
 #[derive(Parser)]
 /// VM Translator for the NAND2Tetris Hack platform. Translates hack virtual machine code to 
 /// hack assembly. Can be run in directory mode or single-file mode. 
-pub struct Config {
-    /// Optional input file. If specified, runs translator in single-file mode.
-    #[arg(short, long, value_parser = Config::parse_input_file)]
-    pub input: Option<PathBuf>,
-    
+pub struct Config {    
     /// Optional output file specifier. Defaults to folder name
     #[arg(short, long)]
     pub output: Option<PathBuf>,
@@ -38,9 +25,6 @@ pub struct Config {
 
     #[arg(skip)]
     pub path: PathBuf,
-
-    #[arg(skip)]
-    pub mode: Mode,
 }
 
 impl Config {
@@ -53,19 +37,6 @@ impl Config {
                 clap::error::ErrorKind::Io,
                 format!("failed to fetch current path: {e}"),
             ))?;
-
-        config.mode = match config.input {
-            Some(_) => Mode::SingleFile,
-            None => {
-                // file_name returns the directory name here
-                let dir_name = config.path
-                    .file_name()
-                    .unwrap_or(std::ffi::OsStr::new("a"));
-
-                config.input = Some(PathBuf::from(dir_name));
-                Mode::Directory
-            }
-        };
 
         match &mut config.output {
             Some(output_file) => {
@@ -93,32 +64,10 @@ impl Config {
         Ok(config)
     }
 
-    fn parse_input_file(s: &str) -> Result<PathBuf, String> {
-        let mut input_file = PathBuf::from(s);
-
-        match input_file.extension() {
-            None => {input_file.set_extension(VM_FILE_EXT);},
-            Some(ext) if ext == VM_FILE_EXT => (),
-            Some(_) => return Err(format!(
-                "Specified input file \"{}\" is not of type .{}", s, VM_FILE_EXT)
-            )
-        };
-
-        if !input_file.exists() {
-            return Err(format!("file {} does not exist in the current directory", s))
-        }
-
-        Ok(input_file)
-    }
-
-    pub fn make_file_reader(&self) -> io::Result<io::Lines<io::BufReader<fs::File>>> {
-        let file = fs::File::open(&self.input.clone().unwrap())?;
-        Ok(io::BufReader::new(file).lines())
-    }
-
     pub fn get_input_name(&self) -> &str {
-        self.input.as_ref().unwrap()
-        .file_stem().unwrap()
-        .to_str().unwrap()
+        self.path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("a")
     }
 }

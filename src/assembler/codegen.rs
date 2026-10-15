@@ -181,18 +181,10 @@ impl SymbolTable {
     }
 
     pub fn get_or_alloc(&mut self, key: &str) -> &u16 {
-        let local_entry = self.inner.entry(key.to_string());
-        let is_occupied: bool;
-
-        match local_entry {
-            // we match into a boolean because Rust's borrowing system is being annoying
-            Entry::Occupied(_entry) => {
-                is_occupied = true;
-            }
-            Entry::Vacant(_entry) => {
-                is_occupied = false;
-            }
-        }
+        let is_occupied = match self.inner.entry(key.to_string()) {
+            Entry::Occupied(_) => true,
+            Entry::Vacant(_) => false
+        };
 
         if is_occupied {
             self.inner.get(key).unwrap()

@@ -1,12 +1,9 @@
-use std::fs;
-use std::io::{self, BufRead};
 use std::path::{PathBuf, Path};
 
 use clap::builder::OsStr;
 use clap::CommandFactory;
 use clap::Parser;
 
-const VM_FILE_EXT: &str = "vm";
 const ASM_FILE_EXT: &str = "asm";
 pub const ENTRYPOINT: &str = "Sys.init";
 

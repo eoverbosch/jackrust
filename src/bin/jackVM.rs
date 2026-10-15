@@ -24,10 +24,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>>{
         |file| file.filepath.file_name() == Some(OsStr::new("Sys.vm"))
     ).ok_or("Sys.vm not found in current directory")?;
 
-    vm_files.iter().find(
-        |file| file.filepath.file_name() == Some(OsStr::new("Main.vm"))
-    ).ok_or("Main.vm not found in current directory")?;
-
     let callgraph = CallGraph::from_entrypoint(cli::ENTRYPOINT.to_owned(), &mut vm_files)?;
     let line_reader = callgraph.build_function_reader(cli::ENTRYPOINT, &vm_files)?;
     

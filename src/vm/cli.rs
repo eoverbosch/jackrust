@@ -9,7 +9,7 @@ pub const ENTRYPOINT: &str = "Sys.init";
 
 #[derive(Parser)]
 /// VM Translator for the NAND2Tetris Hack platform. Translates hack virtual machine code to
-/// hack assembly. Can be run in directory mode or single-file mode.
+/// hack assembly. Current version can only be run in directory mode
 pub struct Config {
     /// Optional output file specifier. Defaults to folder name
     #[arg(short, long)]
